@@ -172,19 +172,18 @@
             (let ((last-object-start (process-mark proc)))
               (goto-char last-object-start)
               (cl-loop
-               (condition-case-unless-debug err
+               (condition-case err
                    (let ((obj (json-read)))
                      (set-marker (process-mark proc) (point))
                      (with-current-buffer ui-buffer
-                       (message "%s" (current-buffer))
                        (gotest-ui-update-test-status obj)))
                  (json-error (return))
                  (wrong-type-argument
-                  ;; sometimes json throws this, ugh
-                  (return))
-                 (error
-                  (message "got other error %s?!" err)
-                  (return)))))))))))
+                  (if (and (eql (cadr err) 'characterp)
+                           (eql (caddr err) :json-eof))
+                      ;; This is peaceful & we can ignore it:
+                      (return)
+                    (signal 'wrong-type-argument err))))))))))))
 
 (defun gotest-ui-update-test-status (json)
   (let-alist json
