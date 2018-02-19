@@ -3,6 +3,7 @@
 
 (require 'ewoc)
 (require 'json)
+(require 'compile)
 
 ;;;; Data model:
 ;;;
@@ -141,7 +142,11 @@
   (let ((status (gotest-ui-thing-status test))
         (package (gotest-ui-test-package test))
         (name (gotest-ui-thing-name test)))
-    (insert (format "%s %s.%s" status package name))
+    (insert (propertize (format "%s" status)
+                        :face (case status
+                                (fail 'error)
+                                (otherwise 'info))))
+    (insert (format " %s.%s" package name))
     (when-let ((elapsed (gotest-ui-thing-elapsed test)))
       (insert (format " (%fs)" elapsed))))
   (when (gotest-ui-thing-expanded-p test)
@@ -195,15 +200,15 @@
                 (push .Output (gotest-ui-thing-output test)))
         (pass
          (setq test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
-         (setf (gotest-ui-thing-status test) "pass"
+         (setf (gotest-ui-thing-status test) 'pass
                (gotest-ui-thing-elapsed test) .Elapsed))
         (fail
          (setq test (gotest-ui-ensure-test  gotest-ui--ewoc .Package .Test))
-         (setf (gotest-ui-thing-status test) "fail"
+         (setf (gotest-ui-thing-status test) 'fail
                (gotest-ui-thing-elapsed test) .Elapsed))
         (skip
          (setq test (gotest-ui-ensure-test  gotest-ui--ewoc .Package .Test))
-         (setf (gotest-ui-thing-status test) "skip"
+         (setf (gotest-ui-thing-status test) 'skip
                (gotest-ui-thing-elapsed test) .Elapsed)))
       (when test
         (ewoc-invalidate gotest-ui--ewoc (gethash test gotest-ui--nodes))))))
