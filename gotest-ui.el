@@ -57,6 +57,7 @@
     (suppress-keymap m)
     ;; key bindings go here
     (define-key m (kbd "TAB") 'gotest-ui-toggle-expanded)
+    (define-key m (kbd "g") 'gotest-ui-rerun)
     m))
 
 (define-derived-mode gotest-ui-mode special-mode "go test UI"
@@ -106,6 +107,10 @@
           (not (gotest-ui-thing-expanded-p data)))
     (ewoc-invalidate gotest-ui--ewoc node)))
 
+(defun gotest-ui-rerun ()
+  (interactive)
+  (gotest-ui gotest-ui--cmdline :dir gotest-ui--dir))
+
 ;;;; Displaying the data:
 
 (defvar-local gotest-ui--tests nil)
@@ -121,7 +126,8 @@
   (interactive "sgo test -json ./...")
   (let* ((name (format "*go test: %s in %s" cmdline dir))
          (buffer (get-buffer-create name)))
-    (switch-to-buffer-other-window buffer)
+    (unless (eql buffer (current-buffer))
+      (switch-to-buffer-other-window buffer))
     (with-current-buffer buffer
       (let ((default-directory dir))      (gotest-ui--clear-buffer buffer)
            (gotest-ui-mode)
