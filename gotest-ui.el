@@ -147,7 +147,6 @@
 (defvar-local gotest-ui--dir nil)
 
 (cl-defun gotest-ui (cmdline &key dir)
-  (interactive "sgo test -json ./...")
   (let* ((name (format "*go test: %s in %s" cmdline dir))
          (buffer (get-buffer-create name)))
     (unless (eql buffer (current-buffer))
@@ -157,7 +156,7 @@
         (gotest-ui--clear-buffer buffer)
         (gotest-ui-mode)
         (gotest-ui--setup-buffer buffer cmdline dir))
-      (setq gotest-ui--process-buffer (generate-new-buffer (format " *gotest-ui: %s in %s" cmdline dir)))
+      (setq gotest-ui--process-buffer (generate-new-buffer (format " *%s" name)))
       (with-current-buffer gotest-ui--process-buffer
         (setq gotest-ui--ui-buffer buffer))
       (setq gotest-ui--process
@@ -186,7 +185,10 @@
                           :face (case status
                                   (fail 'error)
                                   (otherwise 'info))))
-      (insert (format " %s.%s" package name))
+      (insert " ")
+      (insert (if name
+                  (format "%s.%s" package name)
+                package))
       (when-let ((elapsed (gotest-ui-thing-elapsed test)))
         (insert (format " (%fs)" elapsed))))
     (when (gotest-ui-thing-expanded-p test)
