@@ -17,6 +17,10 @@
   "Face for displaying the status of a failed test."
   :group 'gotest-ui)
 
+(defcustom gotest-ui-expand-test-statuses '(fail)
+  "Statuses to expand test cases for.
+Whenever a test enters this state, it is automatically expanded.")
+
 ;;;; Data model:
 ;;;
 ;;; `gotest-ui-data' is the top-level structure, holding all the
@@ -293,6 +297,10 @@
             (with-current-buffer ui-buffer
               (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes)))))))))
 
+(defun gotest-ui-maybe-expand (test)
+  (when (memq (gotest-ui-test-status test) gotest-ui-expand-test-statuses)
+    (setf (gotest-ui-test-expanded-p test) t)))
+
 (defun gotest-ui-update-test-status (json)
   (let-alist json
     (let ((action (intern .Action))
@@ -302,13 +310,16 @@
         (output (push .Output (gotest-ui-thing-output test)))
         (pass
          (setf (gotest-ui-thing-status test) 'pass
-               (gotest-ui-thing-elapsed test) .Elapsed))
+               (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-maybe-expand test))
         (fail
          (setf (gotest-ui-thing-status test) 'fail
-               (gotest-ui-thing-elapsed test) .Elapsed))
+               (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-maybe-expand test))
         (skip
          (setf (gotest-ui-thing-status test) 'skip
-               (gotest-ui-thing-elapsed test) .Elapsed))
+               (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-maybe-expand test))
         (otherwise
          (setq test nil)))
       (when test (gethash test gotest-ui--nodes)))))
