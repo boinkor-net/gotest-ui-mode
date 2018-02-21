@@ -5,6 +5,18 @@
 (require 'json)
 (require 'compile)
 
+(defface gotest-ui-pass-face '((t :foreground "green"))
+  "Face for displaying the status of a passing test."
+  :group 'gotest-ui)
+
+(defface gotest-ui-skip-face '((t :foreground "grey"))
+  "Face for displaying the status of a skipped test."
+  :group 'gotest-ui)
+
+(defface gotest-ui-fail-face '((t :foreground "red" :weight :bold))
+  "Face for displaying the status of a failed test."
+  :group 'gotest-ui)
+
 ;;;; Data model:
 ;;;
 ;;; `gotest-ui-data' is the top-level structure, holding all the
@@ -169,11 +181,20 @@
   ;; TODO
   )
 
+(defun gotest-ui-pp-status (status)
+  (propertize (format "%s" status)
+              'face
+              (case status
+                (fail 'gotest-ui-fail-face)
+                (skip 'gotest-ui-skip-face)
+                (pass 'gotest-ui-pass-face)
+                (otherwise 'default))))
+
 (defun gotest-ui--pp-test (test)
   (cond
    ((gotest-ui-status-p test)
-    (insert (format "%s %s in %s\n\n"
-                    (gotest-ui-status-state test)
+    (insert (gotest-ui-pp-status (gotest-ui-status-state test)))
+    (insert (format " %s in %s\n\n"
                     (gotest-ui-status-cmdline test)
                     (gotest-ui-status-dir test)))
     (unless (zerop (length (gotest-ui-status-output test)))
@@ -182,10 +203,7 @@
     (let ((status (gotest-ui-thing-status test))
           (package (gotest-ui-test-package test))
           (name (gotest-ui-thing-name test)))
-      (insert (propertize (format "%s" status)
-                          :face (case status
-                                  (fail 'error)
-                                  (otherwise 'info))))
+      (insert (gotest-ui-pp-status status))
       (insert " ")
       (insert (if name
                   (format "%s.%s" package name)
