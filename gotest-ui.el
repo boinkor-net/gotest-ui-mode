@@ -27,12 +27,24 @@
   (elapsed)   ; a floating-point amount of seconds
   )
 
-;;; `gotest-ui-package' is a single package under test. It contains
-;;; benchmarks and tests.
-
+;;; `gotest-ui-package' is a single test. It contains a status and
+;;; output.
 (defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
   (package))
+
+(defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
+  (state)
+  (cmdline)
+  (dir)
+  (output)
+  (node))
+
+(cl-defun gotest-ui--make-status (ewoc cmdline dir)
+  (let ((status (apply #'gotest-ui--make-status-1 :state "run" :cmdline cmdline :dir dir)))
+    (let ((node (ewoc-enter-first ewoc status)))
+      (setf (gotest-ui-status-node status) node))
+    status))
 
 (cl-defun gotest-ui--make-test (ewoc &rest args &key status package name &allow-other-keys)
   (let ((test (apply #'gotest-ui--make-test-1 :status (or status "run") args)))
@@ -49,6 +61,14 @@
         test
       (setf (gethash test-name gotest-ui--tests)
             (gotest-ui--make-test ewoc :name base-name :package package-name)))))
+
+(defun gotest-ui-update-status (new-state)
+  (setf (gotest-ui-status-state gotest-ui--status) new-state)
+  (ewoc-invalidate gotest-ui--ewoc (gotest-ui-status-node gotest-ui--status)))
+
+(defun gotest-ui-update-status-output (new-output)
+  (setf (gotest-ui-status-output gotest-ui--status) new-output)
+  (ewoc-invalidate gotest-ui--ewoc (gotest-ui-status-node gotest-ui--status)))
 
 ;;;; Mode definition
 
@@ -86,13 +106,15 @@
   (setq-local default-directory dir)
   (setq gotest-ui--cmdline cmdline
         gotest-ui--dir dir)
-  (let ((ewoc (ewoc-create 'gotest-ui--pp-test (format "%s in %s" cmdline default-directory)
-                           (substitute-command-keys "\n\\{gotest-ui-mode-map}")))
+  (let ((ewoc (ewoc-create 'gotest-ui--pp-test nil nil t))
         (tests (make-hash-table :test #'equal))
         (nodes (make-hash-table :test #'eql)))
     (setq gotest-ui--tests tests)
     (setq gotest-ui--ewoc ewoc)
-    (setq gotest-ui--nodes nodes)))
+    (setq gotest-ui--nodes nodes)
+    ;; Drop in the first few ewoc nodes:
+    (setq gotest-ui--status (gotest-ui--make-status ewoc cmdline dir))
+    ))
 
 ;;;; Commands:
 
@@ -103,9 +125,10 @@
          (data (ewoc-data node)))
     ;; (unless (or (null data) (not (gotest-ui-thing-p data)))
     ;;   (message "Not expandable."))
-    (setf (gotest-ui-thing-expanded-p data)
-          (not (gotest-ui-thing-expanded-p data)))
-    (ewoc-invalidate gotest-ui--ewoc node)))
+    (when (and data (gotest-ui-thing-p data))
+      (setf (gotest-ui-thing-expanded-p data)
+            (not (gotest-ui-thing-expanded-p data)))
+      (ewoc-invalidate gotest-ui--ewoc node))))
 
 (defun gotest-ui-rerun ()
   (interactive)
@@ -116,6 +139,7 @@
 (defvar-local gotest-ui--tests nil)
 (defvar-local gotest-ui--ewoc nil)
 (defvar-local gotest-ui--nodes nil)
+(defvar-local gotest-ui--status nil)
 (defvar-local gotest-ui--process-buffer nil)
 (defvar-local gotest-ui--ui-buffer nil)
 (defvar-local gotest-ui--process nil)
@@ -129,9 +153,10 @@
     (unless (eql buffer (current-buffer))
       (switch-to-buffer-other-window buffer))
     (with-current-buffer buffer
-      (let ((default-directory dir))      (gotest-ui--clear-buffer buffer)
-           (gotest-ui-mode)
-           (gotest-ui--setup-buffer buffer cmdline dir))
+      (let ((default-directory dir))
+        (gotest-ui--clear-buffer buffer)
+        (gotest-ui-mode)
+        (gotest-ui--setup-buffer buffer cmdline dir))
       (setq gotest-ui--process-buffer (generate-new-buffer (format " *gotest-ui: %s in %s" cmdline dir)))
       (with-current-buffer gotest-ui--process-buffer
         (setq gotest-ui--ui-buffer buffer))
@@ -145,27 +170,48 @@
   )
 
 (defun gotest-ui--pp-test (test)
-  (let ((status (gotest-ui-thing-status test))
-        (package (gotest-ui-test-package test))
-        (name (gotest-ui-thing-name test)))
-    (insert (propertize (format "%s" status)
-                        :face (case status
-                                (fail 'error)
-                                (otherwise 'info))))
-    (insert (format " %s.%s" package name))
-    (when-let ((elapsed (gotest-ui-thing-elapsed test)))
-      (insert (format " (%fs)" elapsed))))
-  (when (gotest-ui-thing-expanded-p test)
-    (insert "\n")
-    (dolist (line (reverse (gotest-ui-thing-output test)))
-      (insert "\t")
-      (insert line))))
+  (cond
+   ((gotest-ui-status-p test)
+    (insert (format "%s %s in %s\n\n"
+                    (gotest-ui-status-state test)
+                    (gotest-ui-status-cmdline test)
+                    (gotest-ui-status-dir test)))
+    (unless (zerop (length (gotest-ui-status-output test)))
+      (insert (format "\n\n%s" (gotest-ui-status-output test)))))
+   ((gotest-ui-test-p test)
+    (let ((status (gotest-ui-thing-status test))
+          (package (gotest-ui-test-package test))
+          (name (gotest-ui-thing-name test)))
+      (insert (propertize (format "%s" status)
+                          :face (case status
+                                  (fail 'error)
+                                  (otherwise 'info))))
+      (insert (format " %s.%s" package name))
+      (when-let ((elapsed (gotest-ui-thing-elapsed test)))
+        (insert (format " (%fs)" elapsed))))
+    (when (gotest-ui-thing-expanded-p test)
+      (insert "\n")
+      (dolist (line (reverse (gotest-ui-thing-output test)))
+        (insert "\t")
+        (insert line)))
+    (insert "\n"))
+   ))
 
 ;;;; Handling input:
 
-(defun gotest-ui--process-sentinel (process event)
-  ;; TODO: update ui buffer?
-  )
+(defun gotest-ui--process-sentinel (proc event)
+  (let* ((process-buffer (process-buffer proc))
+         (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
+         (inhibit-quit t))
+    (with-local-quit
+      (with-current-buffer ui-buffer
+        (cond
+         ((string= event "finished\n")
+          (gotest-ui-update-status 'pass))
+         ((s-prefix-p "exited abnormally" event)
+          (gotest-ui-update-status 'fail))
+         (t
+          (gotest-ui-update-status event)))))))
 
 (defun gotest-ui-read-json (proc input)
   (let* ((process-buffer (process-buffer proc))
@@ -174,27 +220,53 @@
     (with-local-quit
       (when (buffer-live-p process-buffer)
         (with-current-buffer process-buffer
-          (save-excursion
-            ;; insert the chunk of output at the end
-            (goto-char (point-max))
-            (insert input)
+          (cond
+           ((= (point-min) (point-max))
+            ;; Buffer is empty, decide whether to treat this as JSON
+            ;; or as compiler spew:
+            (if (= (string-to-char input) ?\{)
+                (gotest-ui-read-json-1 proc process-buffer ui-buffer input)
+              (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input)))
+           ((= (char-after (point-min)) ?\{)
+            ;; We have read JSON, let's continue reading JSON.
+            (gotest-ui-read-json-1 proc process-buffer ui-buffer input))
+           (t
+            ;; Started out as compiler spew, let's continue reading compiler spew.
+            (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))))
 
-            ;; try to read the next object (which is hopefully complete now):
-            (let ((last-object-start (process-mark proc)))
-              (goto-char last-object-start)
-              (cl-loop
-               (condition-case err
-                   (let ((obj (json-read)))
-                     (set-marker (process-mark proc) (point))
-                     (with-current-buffer ui-buffer
-                       (gotest-ui-update-test-status obj)))
-                 (json-error (return))
-                 (wrong-type-argument
-                  (if (and (eql (cadr err) 'characterp)
-                           (eql (caddr err) :json-eof))
-                      ;; This is peaceful & we can ignore it:
-                      (return)
-                    (signal 'wrong-type-argument err))))))))))))
+(defun gotest-ui-read-compiler-spew (proc process-buffer ui-buffer input)
+  (with-current-buffer process-buffer
+    (save-excursion
+      (message "existing compiler spew detected!")
+      (goto-char (point-max))
+      (insert input)
+      (let ((all-output (buffer-string)))
+        (with-current-buffer ui-buffer
+          (gotest-ui-update-status-output all-output))))))
+
+(defun gotest-ui-read-json-1 (proc process-buffer ui-buffer input)
+  (with-current-buffer process-buffer
+    (save-excursion
+      ;; insert the chunk of output at the end
+      (goto-char (point-max))
+      (insert input)
+
+      ;; try to read the next object (which is hopefully complete now):
+      (let ((last-object-start (process-mark proc)))
+        (goto-char last-object-start)
+        (cl-loop
+         (condition-case err
+             (let ((obj (json-read)))
+               (set-marker (process-mark proc) (point))
+               (with-current-buffer ui-buffer
+                 (gotest-ui-update-test-status obj)))
+           (json-error (return))
+           (wrong-type-argument
+            (if (and (eql (cadr err) 'characterp)
+                     (eql (caddr err) :json-eof))
+                ;; This is peaceful & we can ignore it:
+                (return)
+              (signal 'wrong-type-argument err)))))))))
 
 (defun gotest-ui-update-test-status (json)
   (let-alist json
