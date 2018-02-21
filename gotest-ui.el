@@ -258,7 +258,6 @@
 (defun gotest-ui-read-compiler-spew (proc process-buffer ui-buffer input)
   (with-current-buffer process-buffer
     (save-excursion
-      (message "existing compiler spew detected!")
       (goto-char (point-max))
       (insert input)
       (let ((all-output (buffer-string)))
@@ -292,23 +291,21 @@
 (defun gotest-ui-update-test-status (json)
   (let-alist json
     (let ((action (intern .Action))
-          test)
+          (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test)))
       (case action
-        (run (setq test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test)))
-        (output (setq test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
-                (push .Output (gotest-ui-thing-output test)))
+        (run t)
+        (output (push .Output (gotest-ui-thing-output test)))
         (pass
-         (setq test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
          (setf (gotest-ui-thing-status test) 'pass
                (gotest-ui-thing-elapsed test) .Elapsed))
         (fail
-         (setq test (gotest-ui-ensure-test  gotest-ui--ewoc .Package .Test))
          (setf (gotest-ui-thing-status test) 'fail
                (gotest-ui-thing-elapsed test) .Elapsed))
         (skip
-         (setq test (gotest-ui-ensure-test  gotest-ui--ewoc .Package .Test))
          (setf (gotest-ui-thing-status test) 'skip
-               (gotest-ui-thing-elapsed test) .Elapsed)))
+               (gotest-ui-thing-elapsed test) .Elapsed))
+        (otherwise
+         (setq test nil)))
       (when test
         (ewoc-invalidate gotest-ui--ewoc (gethash test gotest-ui--nodes))))))
 
