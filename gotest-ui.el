@@ -209,7 +209,7 @@
                   (format "%s.%s" package name)
                 package))
       (when-let ((elapsed (gotest-ui-thing-elapsed test)))
-        (insert (format " (%fs)" elapsed))))
+        (insert (format " (%.3fs)" elapsed))))
     (when (gotest-ui-thing-expanded-p test)
       (insert "\n")
       (dolist (line (reverse (gotest-ui-thing-output test)))
