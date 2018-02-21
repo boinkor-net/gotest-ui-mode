@@ -13,7 +13,7 @@
   "Face for displaying the status of a skipped test."
   :group 'gotest-ui)
 
-(defface gotest-ui-fail-face '((t :foreground "red" :weight :bold))
+(defface gotest-ui-fail-face '((t :foreground "pink" :weight bold))
   "Face for displaying the status of a failed test."
   :group 'gotest-ui)
 
