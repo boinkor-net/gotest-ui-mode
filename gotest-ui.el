@@ -298,3 +298,9 @@
   (interactive)
   (let ((data (go-test--get-current-file-testing-data)))
     (gotest-ui (s-concat "go test -json " "-run='" data "' ."))))
+
+(defun gotest-ui-current-project ()
+  "Launch go test on the current buffer's project."
+  (interactive)
+  (let ((default-directory (projectile-project-root)))
+    (gotest-ui "go test -json  ./...")))
