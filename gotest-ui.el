@@ -274,19 +274,24 @@
       ;; try to read the next object (which is hopefully complete now):
       (let ((last-object-start (process-mark proc)))
         (goto-char last-object-start)
-        (cl-loop
-         (condition-case err
-             (let ((obj (json-read)))
-               (set-marker (process-mark proc) (point))
-               (with-current-buffer ui-buffer
-                 (gotest-ui-update-test-status obj)))
-           (json-error (return))
-           (wrong-type-argument
-            (if (and (eql (cadr err) 'characterp)
-                     (eql (caddr err) :json-eof))
-                ;; This is peaceful & we can ignore it:
-                (return)
-              (signal 'wrong-type-argument err)))))))))
+        (let ((nodes
+               (cl-loop
+                for node = (condition-case err
+                               (let ((obj (json-read)))
+                                 (set-marker (process-mark proc) (point))
+                                 (with-current-buffer ui-buffer
+                                   (gotest-ui-update-test-status obj)))
+                             (json-error (return nodes))
+                             (wrong-type-argument
+                              (if (and (eql (cadr err) 'characterp)
+                                       (eql (caddr err) :json-eof))
+                                  ;; This is peaceful & we can ignore it:
+                                  (return nodes)
+                                (signal 'wrong-type-argument err))))
+                when node collect node into nodes)))
+          (when nodes
+            (with-current-buffer ui-buffer
+              (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes)))))))))
 
 (defun gotest-ui-update-test-status (json)
   (let-alist json
@@ -306,8 +311,7 @@
                (gotest-ui-thing-elapsed test) .Elapsed))
         (otherwise
          (setq test nil)))
-      (when test
-        (ewoc-invalidate gotest-ui--ewoc (gethash test gotest-ui--nodes))))))
+      (when test (gethash test gotest-ui--nodes)))))
 
 ;;;; Commands for go-mode:
 
