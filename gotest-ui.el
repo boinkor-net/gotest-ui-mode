@@ -38,8 +38,8 @@ Whenever a test enters this state, it is automatically expanded.")
   (name)
   (ewoc)
   (expanded-p)
-  (status)    ; 'pass or 'fail
-  (output)    ; list of \n-terminated strings written as output
+  (status)
+  (buffer)    ; the buffer containing this test's output
   (elapsed)   ; a floating-point amount of seconds
   )
 
@@ -85,6 +85,25 @@ Whenever a test enters this state, it is automatically expanded.")
 (defun gotest-ui-update-status-output (new-output)
   (setf (gotest-ui-status-output gotest-ui--status) new-output)
   (ewoc-invalidate gotest-ui--ewoc (gotest-ui-status-node gotest-ui--status)))
+
+(defun gotest-ui-ensure-output-buffer (thing)
+  (unless (gotest-ui-thing-buffer thing)
+    (with-current-buffer
+        (setf (gotest-ui-thing-buffer thing)
+              (generate-new-buffer (format " *%s" (gotest-ui-thing-name thing))))
+      (setq-local gotest-ui-parse-marker (point-min-marker))
+      (setq-local gotest-ui-insertion-marker (point-min-marker))
+      (set-marker-insertion-type gotest-ui-insertion-marker t)))
+  (gotest-ui-thing-buffer thing))
+
+(defun gotest-ui-update-thing-output (thing output)
+  (with-current-buffer (gotest-ui-ensure-output-buffer thing)
+    (goto-char gotest-ui-insertion-marker)
+    (insert output)
+    ;; TODO: ensure the output gets parsed / marker moved
+    ))
+
+;; TODO: clean up buffers on kill
 
 ;;;; Mode definition
 
@@ -181,10 +200,6 @@ Whenever a test enters this state, it is automatically expanded.")
       (set-process-filter gotest-ui--process #'gotest-ui-read-json)
       (set-process-sentinel gotest-ui--process #'gotest-ui--process-sentinel))))
 
-(defun gotest-ui-pp (elt)
-  ;; TODO
-  )
-
 (defun gotest-ui-pp-status (status)
   (propertize (format "%s" status)
               'face
@@ -193,6 +208,11 @@ Whenever a test enters this state, it is automatically expanded.")
                 (skip 'gotest-ui-skip-face)
                 (pass 'gotest-ui-pass-face)
                 (otherwise 'default))))
+
+(defun gotest-ui--pp-test-output (test)
+  (with-current-buffer (gotest-ui-ensure-output-buffer test)
+    (replace-regexp-in-string "^" "\t"
+                              (buffer-substring (point-min) (point-max)))))
 
 (defun gotest-ui--pp-test (test)
   (cond
@@ -216,9 +236,7 @@ Whenever a test enters this state, it is automatically expanded.")
         (insert (format " (%.3fs)" elapsed))))
     (when (gotest-ui-thing-expanded-p test)
       (insert "\n")
-      (dolist (line (reverse (gotest-ui-thing-output test)))
-        (insert "\t")
-        (insert line)))
+      (insert (gotest-ui--pp-test-output test)))
     (insert "\n"))
    ))
 
@@ -307,7 +325,7 @@ Whenever a test enters this state, it is automatically expanded.")
           (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test)))
       (case action
         (run t)
-        (output (push .Output (gotest-ui-thing-output test)))
+        (output (gotest-ui-update-thing-output test .Output))
         (pass
          (setf (gotest-ui-thing-status test) 'pass
                (gotest-ui-thing-elapsed test) .Elapsed)
