@@ -433,6 +433,18 @@ Whenever a test enters this state, it is automatically expanded.")
 ;;;; Commands for go-mode:
 
 ;;;###autoload
+(defun gotest-ui-current-test ()
+  "Launch go test with the test that (point) is in."
+  (interactive)
+  (cl-destructuring-bind (test-suite test-name) (go-test--get-current-test-info)
+    (let ((test-flag (if (> (length test-suite) 0) "-m " "-run "))
+          (additional-arguments (if go-test-additional-arguments-function
+                                    (funcall go-test-additional-arguments-function
+                                             test-suite test-name) "")))
+      (when test-name
+        (gotest-ui (s-concat "go test -json " test-flag test-name additional-arguments "\\$ ."))))))
+
+;;;###autoload
 (defun gotest-ui-current-file ()
   "Launch go test on the current buffer file."
   (interactive)
