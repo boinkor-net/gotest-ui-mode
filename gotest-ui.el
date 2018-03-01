@@ -264,8 +264,8 @@ Whenever a test enters this state, it is automatically expanded.")
 
 (defun gotest-ui--pp-test-output (test)
   (with-current-buffer (gotest-ui-ensure-output-buffer test)
-    (replace-regexp-in-string "^" "\t"
-                              (buffer-substring (point-min) (point-max)))))
+    (propertize (buffer-substring (point-min) (point-max))
+                'line-prefix "\t")))
 
 (defun gotest-ui--pp-test (test)
   (cond
