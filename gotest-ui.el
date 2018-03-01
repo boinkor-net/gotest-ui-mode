@@ -17,6 +17,10 @@
   "Face for displaying the status of a failed test."
   :group 'gotest-ui)
 
+(defface gotest-ui-link-face '((t :foreground "white" :weight bold))
+  "Face for displaying links to go source files."
+  :group 'gotest-ui)
+
 (defcustom gotest-ui-expand-test-statuses '(fail)
   "Statuses to expand test cases for.
 Whenever a test enters this state, it is automatically expanded.")
@@ -96,12 +100,61 @@ Whenever a test enters this state, it is automatically expanded.")
       (set-marker-insertion-type gotest-ui-insertion-marker t)))
   (gotest-ui-thing-buffer thing))
 
+(defun gotest-ui-mouse-open-file (event)
+  "In gotest-ui mode, open the file/line reference in another window."
+  (interactive "e")
+  (let ((window (posn-window (event-end event)))
+        (pos (posn-point (event-end event)))
+        file line)
+    (if (not (windowp window))
+        (error "No file chosen"))
+    (with-current-buffer (window-buffer window)
+      (goto-char pos)
+      (setq file (gotest-ui-get-file-for-visit))
+      (setq line (gotest-ui-get-line-for-visit)))
+    (unless (file-exists-p file)
+      (error "Could not open %s:%d" file line))
+    (with-current-buffer (find-file-other-window file)
+      (goto-char (point-min))
+      (forward-line (1- line)))))
+
+(defun gotest-ui-get-file-for-visit ()
+  (get-text-property (point) 'gotest-ui-file))
+
+(defun gotest-ui-get-line-for-visit ()
+  (string-to-number (get-text-property (point) 'gotest-ui-line)))
+
+(defun gotest-ui-file-from-gopath (package file-basename)
+  (let ((gopath (or (getenv "GOPATH")
+                    (expand-file-name "~/go"))))
+    (expand-file-name (concat gopath "/src/" package "/" file-basename))))
+
+(defvar gotest-ui-click-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map [mouse-2] 'gotest-ui-mouse-open-file)
+    map))
+
+(defun gotest-ui-ensure-parsed (thing)
+  (save-excursion
+    (goto-char gotest-ui-parse-marker)
+    (while (re-search-forward "\\([^ \t]+\\.go\\):\\([0-9]+\\): " gotest-ui-insertion-marker t)
+      (let* ((file-basename (match-string 1))
+             (file (gotest-ui-file-from-gopath (gotest-ui-test-package thing) file-basename)))
+        (set-text-properties (match-beginning 0) (match-end 0)
+                             `(face gotest-ui-link-face
+                                    gotest-ui-file ,file
+                                    gotest-ui-line ,(match-string 2)
+                                    keymap ,gotest-ui-click-map
+                                    follow-link t
+                                    ))))
+    (set-marker gotest-ui-parse-marker gotest-ui-insertion-marker)))
+
 (defun gotest-ui-update-thing-output (thing output)
   (with-current-buffer (gotest-ui-ensure-output-buffer thing)
     (goto-char gotest-ui-insertion-marker)
     (insert output)
-    ;; TODO: ensure the output gets parsed / marker moved
-    ))
+    (set-marker gotest-ui-insertion-marker (point))
+    (gotest-ui-ensure-parsed thing)))
 
 ;; TODO: clean up buffers on kill
 
@@ -355,3 +408,5 @@ Whenever a test enters this state, it is automatically expanded.")
   (interactive)
   (let ((default-directory (projectile-project-root)))
     (gotest-ui "go test -json  ./...")))
+
+(provide 'gotest-ui)
