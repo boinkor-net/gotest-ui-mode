@@ -172,7 +172,7 @@ Whenever a test enters this state, it is automatically expanded.")
 (defun gotest-ui-ensure-parsed (thing)
   (save-excursion
     (goto-char gotest-ui-parse-marker)
-    (while (re-search-forward "\\([^ \t]+\\.go\\):\\([0-9]+\\): " gotest-ui-insertion-marker t)
+    (while (re-search-forward "\\([^ \t]+\\.go\\):\\([0-9]+\\)" gotest-ui-insertion-marker t)
       (let* ((file-basename (match-string 1))
              (file (gotest-ui-file-from-gopath (gotest-ui-test-package thing) file-basename)))
         (set-text-properties (match-beginning 0) (match-end 0)
