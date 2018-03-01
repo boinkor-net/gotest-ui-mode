@@ -1,3 +1,38 @@
+;;; gotest-ui.el --- Major mode for running go test -json
+
+;; Copyright 2018 Andreas Fuchs
+;;           2013-2015 Samuel Tonini, Matt DeBoard, Andreas Fuchs
+;; Authors: Andreas Fuchs <asf@boinkor.net>,
+
+;; URL: https://github.com/antifuchs/gotest-ui-mode
+;; Created: Feb 18, 2018
+;; Keywords: languages go
+;; Version: 0.1.0
+;; Package-Requires: ((emacs "25") (json) (compile))
+
+;; This file is not a part of GNU Emacs.
+
+;; This program is free software; you can redistribute it and/or modify
+;; it under the terms of the GNU General Public License as published by
+;; the Free Software Foundation; either version 2, or (at your option)
+;; any later version.
+
+;; This program is distributed in the hope that it will be useful,
+;; but WITHOUT ANY WARRANTY; without even the implied warranty of
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+;; GNU General Public License for more details.
+
+;; You should have received a copy of the GNU General Public License
+;; along with this program; if not, write to the Free Software
+;; Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+;;; Commentary:
+
+;;  Provides support for running go tests with a nice user interface
+;;  that allows folding away output, highlighting failing tests.
+
+;;; Code:
+
 (eval-when-compile
   (require 'cl))
 
@@ -397,12 +432,14 @@ Whenever a test enters this state, it is automatically expanded.")
 
 ;;;; Commands for go-mode:
 
+;;;###autoload
 (defun gotest-ui-current-file ()
   "Launch go test on the current buffer file."
   (interactive)
   (let ((data (go-test--get-current-file-testing-data)))
     (gotest-ui (s-concat "go test -json " "-run='" data "' ."))))
 
+;;;###autoload
 (defun gotest-ui-current-project ()
   "Launch go test on the current buffer's project."
   (interactive)
@@ -410,3 +447,5 @@ Whenever a test enters this state, it is automatically expanded.")
     (gotest-ui "go test -json  ./...")))
 
 (provide 'gotest-ui)
+
+;;; gotest-ui.el ends here
