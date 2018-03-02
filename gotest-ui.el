@@ -390,26 +390,72 @@ Whenever a test enters this state, it is automatically expanded.")
       (insert input)
 
       ;; try to read the next object (which is hopefully complete now):
-      (let ((last-object-start (process-mark proc)))
-        (goto-char last-object-start)
-        (let ((nodes
-               (cl-loop
-                for node = (condition-case err
-                               (let ((obj (json-read)))
-                                 (set-marker (process-mark proc) (point))
-                                 (with-current-buffer ui-buffer
-                                   (gotest-ui-update-test-status obj)))
-                             (json-error (return nodes))
-                             (wrong-type-argument
-                              (if (and (eql (cadr err) 'characterp)
-                                       (eql (caddr err) :json-eof))
-                                  ;; This is peaceful & we can ignore it:
-                                  (return nodes)
-                                (signal 'wrong-type-argument err))))
-                when node collect node into nodes)))
-          (when nodes
-            (with-current-buffer ui-buffer
-              (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes)))))))))
+      (let ((nodes
+             (cl-loop
+              for (node . continue) = (gotest-ui-read-test-event proc ui-buffer)
+              when node collect node into nodes
+              while continue
+              finally (return nodes))))
+        (when nodes
+          (with-current-buffer ui-buffer
+            (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes))))))))
+
+(defvar-local gotest-ui-test-with-compiler-error nil)
+
+(defun gotest-ui-read-test-event (proc ui-buffer)
+  (goto-char (process-mark proc))
+  (forward-line 1)
+  (cond
+   (gotest-ui-test-with-compiler-error
+    ;; We are inside a test with compiler spew - let's accumulate all
+    ;; that output into its node until we get JSON again.
+
+    )
+   (t
+    (case (char-after (point))
+      (?\{
+       ;; It's JSON:
+       (condition-case err
+           (let ((obj (json-read)))
+             (set-marker (process-mark proc) (point))
+             (with-current-buffer ui-buffer
+               (cons (gotest-ui-update-test-status obj) t)))
+         (json-error (cons nil nil))
+         (wrong-type-argument
+          (if (and (eql (cadr err) 'characterp)
+                   (eql (caddr err) :json-eof))
+              ;; This is peaceful & we can ignore it:
+              (cons nil nil)
+            (signal 'wrong-type-argument err)))))
+      (?\#
+       ;; It's a compiler error:
+       (when (looking-at "^# \\(.*\\)\n")
+         (let* ((package-name (match-string 1))
+                (test (with-current-buffer ui-buffer
+                        (gotest-ui-ensure-test gotest-ui--ewoc package-name nil))))
+           (setq gotest-ui-test-with-compiler-error test)
+           (gotest-ui-read-test-compiler-error test proc)
+           (cons test nil))))
+      (otherwise
+       ;; We're done:
+       (message "done %s" (process-mark proc))
+       (cons nil nil))))))
+
+(defun gotest-ui-read-test-compiler-error (test proc)
+  "Read output line-by-line until we see JSON again, or we reach point-max."
+  (forward-line 0)
+  (cl-loop for bol = (point)
+           for line = (save-excursion
+                        (forward-line 1)
+                        (buffer-substring bol (point)))
+           do (forward-line 1)
+           do (set-process-mark proc (point))
+           do (gotest-ui-update-thing-output test (concat line "\n"))
+           when (eql (char-after (point)) ?\{)
+           do (progn (setq gotest-ui-test-with-compiler-error nil)
+                     (return))
+           when (eql (point-max) (point))
+           do (return)))
 
 (defun gotest-ui-maybe-expand (test)
   (when (memq (gotest-ui-test-status test) gotest-ui-expand-test-statuses)
