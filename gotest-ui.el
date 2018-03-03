@@ -465,12 +465,13 @@ Whenever a test enters this state, it is automatically expanded."
 
 (defun gotest-ui-read-test-event (proc ui-buffer)
   (goto-char (process-mark proc))
+  (when (= (point) (line-end-position))
+    (forward-line 1))
   (case (char-after (point))
     (?\{
      ;; It's JSON:
      (condition-case err
          (let ((obj (json-read)))
-           (forward-line 1)
            (set-marker (process-mark proc) (point))
            (with-current-buffer ui-buffer
              (cons (gotest-ui-update-test-status obj) t)))
