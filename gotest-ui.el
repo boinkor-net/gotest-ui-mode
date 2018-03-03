@@ -102,7 +102,8 @@ Whenever a test enters this state, it is automatically expanded."
 ;;; output.
 (defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
-  (package))
+  (package)
+  (reason))
 
 (defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
   (state)
@@ -125,13 +126,13 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;; Data manipulation routines:
 
-(defun gotest-ui-ensure-test (ewoc package-name base-name)
+(cl-defun gotest-ui-ensure-test (ewoc package-name base-name &key (status "run"))
   (let* ((test-name (format "%s.%s" package-name base-name))
          (test (gethash test-name gotest-ui--tests)))
     (if test
         test
       (setf (gethash test-name gotest-ui--tests)
-            (gotest-ui--make-test ewoc :name base-name :package package-name)))))
+            (gotest-ui--make-test ewoc :name base-name :package package-name :status status)))))
 
 (defun gotest-ui-update-status (new-state)
   (setf (gotest-ui-status-state gotest-ui--status) new-state)
@@ -288,8 +289,10 @@ Whenever a test enters this state, it is automatically expanded."
 (defvar-local gotest-ui--nodes nil)
 (defvar-local gotest-ui--status nil)
 (defvar-local gotest-ui--process-buffer nil)
+(defvar-local gotest-ui--stderr-process-buffer nil)
 (defvar-local gotest-ui--ui-buffer nil)
 (defvar-local gotest-ui--process nil)
+(defvar-local gotest-ui--stderr-process nil)
 (defvar-local gotest-ui--cmdline nil)
 (defvar-local gotest-ui--dir nil)
 
@@ -304,14 +307,23 @@ Whenever a test enters this state, it is automatically expanded."
         (gotest-ui--clear-buffer buffer)
         (gotest-ui-mode)
         (gotest-ui--setup-buffer buffer cmdline dir))
+      (setq gotest-ui--stderr-process-buffer (generate-new-buffer (format " *%s (stderr)" name)))
+      (with-current-buffer gotest-ui--stderr-process-buffer
+        (setq gotest-ui--ui-buffer buffer))
       (setq gotest-ui--process-buffer (generate-new-buffer (format " *%s" name)))
       (with-current-buffer gotest-ui--process-buffer
         (setq gotest-ui--ui-buffer buffer))
+      (setq gotest-ui--stderr-process
+            (make-pipe-process :name (s-concat name "(stderr)")
+                               :buffer gotest-ui--stderr-process-buffer
+                               :sentinel #'gotest-ui--stderr-process-sentinel
+                               :filter #'gotest-ui-read-stderr))
       (setq gotest-ui--process
             (make-process :name name
                           :buffer gotest-ui--process-buffer
                           :sentinel #'gotest-ui--process-sentinel
                           :filter #'gotest-ui-read-json
+                          :stderr gotest-ui--stderr-process
                           :command cmdline)))))
 
 (defun gotest-ui-pp-status (status)
@@ -347,12 +359,13 @@ Whenever a test enters this state, it is automatically expanded."
                   (format "%s.%s" package name)
                 package))
       (when-let ((elapsed (gotest-ui-thing-elapsed test)))
-        (insert (format " (%.3fs)" elapsed))))
+        (insert (format " (%.3fs)" elapsed)))
+      (when-let ((reason (gotest-ui-test-reason test)))
+        (insert (format " [%s]" reason))))
     (when (gotest-ui-thing-expanded-p test)
       (insert "\n")
       (insert (gotest-ui--pp-test-output test)))
-    (insert "\n"))
-   ))
+    (insert "\n"))))
 
 ;;;; Handling input:
 
@@ -370,6 +383,20 @@ Whenever a test enters this state, it is automatically expanded."
          (t
           (gotest-ui-update-status event)))))))
 
+(defun gotest-ui--stderr-process-sentinel (proc event)
+  ;; ignore all events
+  nil)
+
+(defun gotest-ui-read-stderr (proc input)
+  (let* ((process-buffer (process-buffer proc))
+         (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
+         (inhibit-quit t))
+    (with-local-quit
+      (when (buffer-live-p process-buffer)
+        (with-current-buffer process-buffer
+          ;; TODO: parse packages and make them failing tests
+          (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))
+
 (defun gotest-ui-read-json (proc input)
   (let* ((process-buffer (process-buffer proc))
          (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
@@ -377,19 +404,7 @@ Whenever a test enters this state, it is automatically expanded."
     (with-local-quit
       (when (buffer-live-p process-buffer)
         (with-current-buffer process-buffer
-          (cond
-           ((= (point-min) (point-max))
-            ;; Buffer is empty, decide whether to treat this as JSON
-            ;; or as compiler spew:
-            (if (= (string-to-char input) ?\{)
-                (gotest-ui-read-json-1 proc process-buffer ui-buffer input)
-              (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input)))
-           ((= (char-after (point-min)) ?\{)
-            ;; We have read JSON, let's continue reading JSON.
-            (gotest-ui-read-json-1 proc process-buffer ui-buffer input))
-           (t
-            ;; Started out as compiler spew, let's continue reading compiler spew.
-            (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))))
+          (gotest-ui-read-json-1 proc process-buffer ui-buffer input))))))
 
 (defun gotest-ui-read-compiler-spew (proc process-buffer ui-buffer input)
   (with-current-buffer process-buffer
@@ -398,7 +413,9 @@ Whenever a test enters this state, it is automatically expanded."
       (insert input)
       (let ((all-output (buffer-string)))
         (with-current-buffer ui-buffer
-          (gotest-ui-update-status-output all-output))))))
+          ;; TODO: parse the "# <package>" output!
+          ;; (gotest-ui-update-status-output all-output)
+          )))))
 
 (defun gotest-ui-read-json-1 (proc process-buffer ui-buffer input)
   (with-current-buffer process-buffer
@@ -418,46 +435,41 @@ Whenever a test enters this state, it is automatically expanded."
           (with-current-buffer ui-buffer
             (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes))))))))
 
-(defvar-local gotest-ui-test-with-compiler-error nil)
-
 (defun gotest-ui-read-test-event (proc ui-buffer)
   (goto-char (process-mark proc))
-  (forward-line 1)
-  (cond
-   (gotest-ui-test-with-compiler-error
-    ;; We are inside a test with compiler spew - let's accumulate all
-    ;; that output into its node until we get JSON again.
-
-    )
-   (t
-    (case (char-after (point))
-      (?\{
-       ;; It's JSON:
-       (condition-case err
-           (let ((obj (json-read)))
-             (set-marker (process-mark proc) (point))
-             (with-current-buffer ui-buffer
-               (cons (gotest-ui-update-test-status obj) t)))
-         (json-error (cons nil nil))
-         (wrong-type-argument
-          (if (and (eql (cadr err) 'characterp)
-                   (eql (caddr err) :json-eof))
-              ;; This is peaceful & we can ignore it:
-              (cons nil nil)
-            (signal 'wrong-type-argument err)))))
-      (?\#
-       ;; It's a compiler error:
-       (when (looking-at "^# \\(.*\\)\n")
-         (let* ((package-name (match-string 1))
-                (test (with-current-buffer ui-buffer
-                        (gotest-ui-ensure-test gotest-ui--ewoc package-name nil))))
-           (setq gotest-ui-test-with-compiler-error test)
-           (gotest-ui-read-test-compiler-error test proc)
-           (cons test nil))))
-      (otherwise
-       ;; We're done:
-       (message "done %s" (process-mark proc))
-       (cons nil nil))))))
+  (case (char-after (point))
+    (?\{
+     ;; It's JSON:
+     (condition-case err
+         (let ((obj (json-read)))
+           (forward-line 1)
+           (set-marker (process-mark proc) (point))
+           (with-current-buffer ui-buffer
+             (cons (gotest-ui-update-test-status obj) t)))
+       (json-error (cons nil nil))
+       (wrong-type-argument
+        (if (and (eql (cadr err) 'characterp)
+                 (eql (caddr err) :json-eof))
+            ;; This is peaceful & we can ignore it:
+            (cons nil nil)
+          (signal 'wrong-type-argument err)))))
+    (?\F
+     ;; It's a compiler error:
+     (when (looking-at "^FAIL\t\\(.*\\)\s+\\[\\([^]]+\\)\\]\n")
+       (let* ((package-name (match-string 1))
+              (reason (match-string 2))
+              test node)
+         (with-current-buffer ui-buffer
+           (setq test (gotest-ui-ensure-test gotest-ui--ewoc package-name nil :status 'fail)
+                 node (gethash test gotest-ui--nodes))
+           (setf (gotest-ui-test-reason test) reason)
+           (gotest-ui-maybe-expand test))
+         (forward-line 1)
+         (set-marker (process-mark proc) (point))
+         (cons node nil))))
+    (otherwise
+     ;; We're done:
+     (cons nil nil))))
 
 (defun gotest-ui-read-test-compiler-error (test proc)
   "Read output line-by-line until we see JSON again, or we reach point-max."
