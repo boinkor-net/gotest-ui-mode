@@ -91,7 +91,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 (defstruct gotest-ui-thing
   (name)
-  (ewoc)
+  (node)
   (expanded-p)
   (status)
   (buffer)    ; the buffer containing this test's output
@@ -121,7 +121,8 @@ Whenever a test enters this state, it is automatically expanded."
 (cl-defun gotest-ui--make-test (ewoc &rest args &key status package name &allow-other-keys)
   (let ((test (apply #'gotest-ui--make-test-1 :status (or status "run") args)))
     (let ((node (ewoc-enter-last ewoc test)))
-      (setf (gethash test gotest-ui--nodes) node))
+      (setf (gethash test gotest-ui--nodes) node
+            (gotest-ui-thing-node test) node))
     test))
 
 ;;; Data manipulation routines:
@@ -362,7 +363,8 @@ Whenever a test enters this state, it is automatically expanded."
         (insert (format " (%.3fs)" elapsed)))
       (when-let ((reason (gotest-ui-test-reason test)))
         (insert (format " [%s]" reason))))
-    (when (gotest-ui-thing-expanded-p test)
+    (when (and (gotest-ui-thing-expanded-p test)
+               (> (length (gotest-ui--pp-test-output test)) 0))
       (insert "\n")
       (insert (gotest-ui--pp-test-output test)))
     (insert "\n"))))
@@ -406,16 +408,45 @@ Whenever a test enters this state, it is automatically expanded."
         (with-current-buffer process-buffer
           (gotest-ui-read-json-1 proc process-buffer ui-buffer input))))))
 
+(defvar-local gotest-ui--current-failing-test nil)
+
+(defun gotest-ui-read-failing-package (ui-buffer)
+  (when (looking-at "^# \\(.*\\)$")
+    (let* ((package (match-string 1))
+           test)
+      (with-current-buffer ui-buffer
+        (setq test (gotest-ui-ensure-test gotest-ui--ewoc package nil :status 'fail)))
+      (forward-line 1)
+      test)))
+
 (defun gotest-ui-read-compiler-spew (proc process-buffer ui-buffer input)
   (with-current-buffer process-buffer
     (save-excursion
       (goto-char (point-max))
       (insert input)
-      (let ((all-output (buffer-string)))
-        (with-current-buffer ui-buffer
-          ;; TODO: parse the "# <package>" output!
-          ;; (gotest-ui-update-status-output all-output)
-          )))))
+      (goto-char (process-mark proc))
+      (while (and (/= (point-max) (line-end-position)) ; incomplete line
+                  (/= (point-max) (point)))
+        (cond
+         (gotest-ui--current-failing-test
+          (cond
+           ((looking-at "^# \\(.*\\)$")
+            (gotest-ui-read-failing-package ui-buffer))
+           (t
+            (let* ((line (buffer-substring (point) (line-end-position)))
+                   (test gotest-ui--current-failing-test))
+              (forward-line 1)
+              (set-marker (process-mark proc) (point))
+              (with-current-buffer ui-buffer
+                (gotest-ui-update-thing-output test line)
+                (ewoc-invalidate gotest-ui--ewoc (gotest-ui-thing-node test)))))))
+         (t
+          (let ((test (gotest-ui-read-failing-package ui-buffer)))
+            (setq gotest-ui--current-failing-test test)
+            (set-marker (process-mark proc) (point))
+            (with-current-buffer ui-buffer
+              (gotest-ui-maybe-expand test)
+              (ewoc-invalidate gotest-ui--ewoc (gotest-ui-thing-node test))))))))))
 
 (defun gotest-ui-read-json-1 (proc process-buffer ui-buffer input)
   (with-current-buffer process-buffer
