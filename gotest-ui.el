@@ -554,14 +554,14 @@ Whenever a test enters this state, it is automatically expanded."
   (cl-destructuring-bind (test-suite test-name) (go-test--get-current-test-info)
     (let ((test-flag (if (> (length test-suite) 0) "-m" "-run")))
       (when test-name
-        (gotest-ui (gotest-ui--command-line test-flag (s-concat test-name "\\$") "."))))))
+        (gotest-ui (gotest-ui--command-line test-flag (s-concat test-name "$") "."))))))
 
 ;;;###autoload
 (defun gotest-ui-current-file ()
   "Launch go test on the current buffer file."
   (interactive)
   (let* ((data (go-test--get-current-file-testing-data))
-         (run-flag (s-concat "-run=" data "\\$")))
+         (run-flag (s-concat "-run=" data "$")))
     (gotest-ui (gotest-ui--command-line run-flag "."))))
 
 ;;;###autoload
