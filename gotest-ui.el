@@ -121,8 +121,7 @@ Whenever a test enters this state, it is automatically expanded."
 (cl-defun gotest-ui--make-test (ewoc &rest args &key status package name &allow-other-keys)
   (let ((test (apply #'gotest-ui--make-test-1 :status (or status "run") args)))
     (let ((node (ewoc-enter-last ewoc test)))
-      (setf (gethash test gotest-ui--nodes) node
-            (gotest-ui-thing-node test) node))
+      (setf (gotest-ui-thing-node test) node))
     test))
 
 ;;; Data manipulation routines:
@@ -256,11 +255,9 @@ Whenever a test enters this state, it is automatically expanded."
   (setq gotest-ui--cmdline cmdline
         gotest-ui--dir dir)
   (let ((ewoc (ewoc-create 'gotest-ui--pp-test nil nil t))
-        (tests (make-hash-table :test #'equal))
-        (nodes (make-hash-table :test #'eql)))
+        (tests (make-hash-table :test #'equal)))
     (setq gotest-ui--tests tests)
     (setq gotest-ui--ewoc ewoc)
-    (setq gotest-ui--nodes nodes)
     ;; Drop in the first few ewoc nodes:
     (setq gotest-ui--status (gotest-ui--make-status ewoc cmdline dir))
     ))
@@ -287,7 +284,6 @@ Whenever a test enters this state, it is automatically expanded."
 
 (defvar-local gotest-ui--tests nil)
 (defvar-local gotest-ui--ewoc nil)
-(defvar-local gotest-ui--nodes nil)
 (defvar-local gotest-ui--status nil)
 (defvar-local gotest-ui--process-buffer nil)
 (defvar-local gotest-ui--stderr-process-buffer nil)
@@ -492,7 +488,7 @@ Whenever a test enters this state, it is automatically expanded."
               test node)
          (with-current-buffer ui-buffer
            (setq test (gotest-ui-ensure-test gotest-ui--ewoc package-name nil :status 'fail)
-                 node (gethash test gotest-ui--nodes))
+                 node (gotest-ui-thing-node test))
            (setf (gotest-ui-test-reason test) reason)
            (gotest-ui-maybe-expand test))
          (forward-line 1)
@@ -543,7 +539,7 @@ Whenever a test enters this state, it is automatically expanded."
          (gotest-ui-maybe-expand test))
         (otherwise
          (setq test nil)))
-      (when test (gethash test gotest-ui--nodes)))))
+      (when test (gotest-ui-thing-node test)))))
 
 ;;;; Commands for go-mode:
 
