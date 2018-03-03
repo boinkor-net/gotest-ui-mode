@@ -177,7 +177,8 @@ Whenever a test enters this state, it is automatically expanded."
   (string-to-number (get-text-property (point) 'gotest-ui-line)))
 
 (defun gotest-ui-file-from-gopath (package file-basename)
-  (if (file-name-absolute-p file-basename)
+  (if (or (file-name-absolute-p file-basename)
+          (string-match-p "/" file-basename))
       file-basename
     (let ((gopath (or (getenv "GOPATH")
                       (expand-file-name "~/go"))))
