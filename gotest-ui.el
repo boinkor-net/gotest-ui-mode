@@ -40,6 +40,9 @@
 (require 'json)
 (require 'compile)
 
+(defgroup gotest-ui nil
+  "The go test runner.")
+
 (defface gotest-ui-pass-face '((t :foreground "green"))
   "Face for displaying the status of a passing test."
   :group 'gotest-ui)
@@ -58,7 +61,20 @@
 
 (defcustom gotest-ui-expand-test-statuses '(fail)
   "Statuses to expand test cases for.
-Whenever a test enters this state, it is automatically expanded.")
+Whenever a test enters this state, it is automatically expanded."
+  :group 'gotest-ui)
+
+(defcustom gotest-ui-test-binary '("go")
+  "Command list used to invoke the `go' binary."
+  :group 'gotest-ui)
+
+(defcustom gotest-ui-test-args '("test" "-json")
+  "Argument list used to run tests with JSON output."
+  :group 'gotest-ui)
+
+(defcustom gotest-ui-additional-test-args '()
+  "Additional args to pass to `go test'."
+  :group 'gotest-ui)
 
 ;;;; Data model:
 ;;;
@@ -292,7 +308,7 @@ Whenever a test enters this state, it is automatically expanded.")
       (with-current-buffer gotest-ui--process-buffer
         (setq gotest-ui--ui-buffer buffer))
       (setq gotest-ui--process
-            (start-process-shell-command name gotest-ui--process-buffer cmdline))
+            (apply 'start-process name gotest-ui--process-buffer cmdline))
       (set-process-filter gotest-ui--process #'gotest-ui-read-json)
       (set-process-sentinel gotest-ui--process #'gotest-ui--process-sentinel))))
 
@@ -486,31 +502,33 @@ Whenever a test enters this state, it is automatically expanded.")
 
 ;;;; Commands for go-mode:
 
+(defun gotest-ui--command-line (&rest cmdline)
+  (append gotest-ui-test-binary gotest-ui-test-args gotest-ui-additional-test-args
+          cmdline))
+
 ;;;###autoload
 (defun gotest-ui-current-test ()
   "Launch go test with the test that (point) is in."
   (interactive)
   (cl-destructuring-bind (test-suite test-name) (go-test--get-current-test-info)
-    (let ((test-flag (if (> (length test-suite) 0) "-m " "-run "))
-          (additional-arguments (if go-test-additional-arguments-function
-                                    (funcall go-test-additional-arguments-function
-                                             test-suite test-name) "")))
+    (let ((test-flag (if (> (length test-suite) 0) "-m" "-run")))
       (when test-name
-        (gotest-ui (s-concat "go test -json " test-flag test-name additional-arguments "\\$ ."))))))
+        (gotest-ui (gotest-ui--command-line test-flag (s-concat test-name "\\$") "."))))))
 
 ;;;###autoload
 (defun gotest-ui-current-file ()
   "Launch go test on the current buffer file."
   (interactive)
-  (let ((data (go-test--get-current-file-testing-data)))
-    (gotest-ui (s-concat "go test -json " "-run='" data "' ."))))
+  (let* ((data (go-test--get-current-file-testing-data))
+         (run-flag (s-concat "-run=" data "\\$")))
+    (gotest-ui (gotest-ui--command-line run-flag "."))))
 
 ;;;###autoload
 (defun gotest-ui-current-project ()
   "Launch go test on the current buffer's project."
   (interactive)
   (let ((default-directory (projectile-project-root)))
-    (gotest-ui "go test -json  ./...")))
+    (gotest-ui (gotest-ui--command-line "./..."))))
 
 (provide 'gotest-ui)
 
