@@ -308,9 +308,11 @@ Whenever a test enters this state, it is automatically expanded."
       (with-current-buffer gotest-ui--process-buffer
         (setq gotest-ui--ui-buffer buffer))
       (setq gotest-ui--process
-            (apply 'start-process name gotest-ui--process-buffer cmdline))
-      (set-process-filter gotest-ui--process #'gotest-ui-read-json)
-      (set-process-sentinel gotest-ui--process #'gotest-ui--process-sentinel))))
+            (make-process :name name
+                          :buffer gotest-ui--process-buffer
+                          :sentinel #'gotest-ui--process-sentinel
+                          :filter #'gotest-ui-read-json
+                          :command cmdline)))))
 
 (defun gotest-ui-pp-status (status)
   (propertize (format "%s" status)
