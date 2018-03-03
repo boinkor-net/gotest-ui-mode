@@ -112,7 +112,7 @@ Whenever a test enters this state, it is automatically expanded."
   (node))
 
 (cl-defun gotest-ui--make-status (ewoc cmdline dir)
-  (let ((status (gotest-ui--make-status-1 :state "run" :cmdline cmdline :dir dir)))
+  (let ((status (gotest-ui--make-status-1 :state "run" :cmdline (s-join " " cmdline) :dir dir)))
     (let ((node (ewoc-enter-first ewoc status)))
       (setf (gotest-ui-status-node status) node))
     status))
@@ -295,7 +295,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 (cl-defun gotest-ui (cmdline &key dir)
   (let* ((dir (or dir default-directory))
-         (name (format "*go test: %s in %s" cmdline dir))
+         (name (format "*go test: %s in %s" (s-join " " cmdline) dir))
          (buffer (get-buffer-create name)))
     (unless (eql buffer (current-buffer))
       (switch-to-buffer-other-window buffer))
