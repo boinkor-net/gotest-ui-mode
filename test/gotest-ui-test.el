@@ -40,8 +40,8 @@
 
 (ert-deftest test-sorting ()
   (gotest-ui-test (stdout-marker)
-    (labels ((pkg (name) (gotest-ui-ensure-test gotest-ui--ewoc name nil))
-             (test (pkg name) (gotest-ui-ensure-test gotest-ui--ewoc pkg name)))
+    (cl-flet ((pkg (name) (gotest-ui-ensure-test gotest-ui--ewoc name nil))
+              (test (pkg name) (gotest-ui-ensure-test gotest-ui--ewoc pkg name)))
       ;; Packages sort lexicographically:
       (should (gotest-ui-test->= (pkg "foo2") (pkg "foo1") ))
       ;; Tests sort in after their packages:
