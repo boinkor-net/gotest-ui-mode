@@ -7,6 +7,9 @@
 
 (files "*.el")
 
+(depends-on "gotest.el")
+(depends-on "s")
+
 (development
  (depends-on "f")
  (depends-on "ecukes")

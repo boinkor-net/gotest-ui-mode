@@ -7,7 +7,7 @@
 ;; Created: Feb 18, 2018
 ;; Keywords: languages go
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "25") (json) (compile))
+;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0"))
 
 ;; This file is not a part of GNU Emacs.
 
@@ -41,7 +41,8 @@
 (require 'compile)
 
 (defgroup gotest-ui nil
-  "The go test runner.")
+  "The go test runner."
+  :group 'tools)
 
 (defface gotest-ui-pass-face '((t :foreground "green"))
   "Face for displaying the status of a passing test."
