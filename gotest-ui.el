@@ -36,6 +36,7 @@
 (eval-when-compile
   (require 'cl))
 
+(require 'subr-x)
 (require 'ewoc)
 (require 'json)
 (require 'compile)
@@ -77,14 +78,12 @@ Whenever a test enters this state, it is automatically expanded."
   :group 'gotest-ui)
 
 ;;;; Data model:
-;;;
-;;; `gotest-ui-data' is the top-level structure, holding all the
-;;; test/benchmark results for the current run.
-(defstruct (gotest-ui-data (:constructor gotest-ui---make-data)
-                           (:type vector))
-  (running)
-  (pass)
-  (fail))
+
+(defstruct (gotest-ui-section :named
+                              (:constructor gotest-ui-section-create)
+                              (:type vector)
+                              (:predicate gotest-ui-section-p))
+  title tests node)
 
 ;;; `gotest-ui-thing' is a thing that can be under test: a
 ;;; package, or a single test.
@@ -98,12 +97,22 @@ Whenever a test enters this state, it is automatically expanded."
   (elapsed)   ; a floating-point amount of seconds
   )
 
-;;; `gotest-ui-package' is a single test. It contains a status and
+;;; `gotest-ui-test' is a single test. It contains a status and
 ;;; output.
 (defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
   (package)
   (reason))
+
+(defun gotest-ui-test->= (test1 test2)
+  "Returns true if TEST1's name sorts greater than TEST2's."
+  (let ((pkg1 (gotest-ui-test-package test1))
+        (pkg2 (gotest-ui-test-package test2))
+        (name1 (or (gotest-ui-thing-name test1) ""))
+        (name2 (or (gotest-ui-thing-name test2) "")))
+    (if (string= pkg1 pkg2)
+        (string> name1 name2)
+      (string> pkg1 pkg2))))
 
 (defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
   (state)
@@ -113,20 +122,17 @@ Whenever a test enters this state, it is automatically expanded."
   (node))
 
 (cl-defun gotest-ui--make-status (ewoc cmdline dir)
-  (let ((status (gotest-ui--make-status-1 :state "run" :cmdline (s-join " " cmdline) :dir dir)))
+  (let ((status (gotest-ui--make-status-1 :state 'run :cmdline (s-join " " cmdline) :dir dir)))
     (let ((node (ewoc-enter-first ewoc status)))
       (setf (gotest-ui-status-node status) node))
     status))
 
 (cl-defun gotest-ui--make-test (ewoc &rest args &key status package name &allow-other-keys)
-  (let ((test (apply #'gotest-ui--make-test-1 :status (or status "run") args)))
-    (let ((node (ewoc-enter-last ewoc test)))
-      (setf (gotest-ui-thing-node test) node))
-    test))
+  (apply #'gotest-ui--make-test-1 :status (or status "run") args))
 
 ;;; Data manipulation routines:
 
-(cl-defun gotest-ui-ensure-test (ewoc package-name base-name &key (status "run"))
+(cl-defun gotest-ui-ensure-test (ewoc package-name base-name &key (status 'run))
   (let* ((test-name (format "%s.%s" package-name base-name))
          (test (gethash test-name gotest-ui--tests)))
     (if test
@@ -251,7 +257,7 @@ Whenever a test enters this state, it is automatically expanded."
       (buffer-disable-undo)
       (setq-local default-directory dir))))
 
-(defun gotest-ui--setup-buffer (buffer cmdline dir)
+(defun gotest-ui--setup-buffer (buffer name cmdline dir)
   (setq-local default-directory dir)
   (setq gotest-ui--cmdline cmdline
         gotest-ui--dir dir)
@@ -261,7 +267,58 @@ Whenever a test enters this state, it is automatically expanded."
     (setq gotest-ui--ewoc ewoc)
     ;; Drop in the first few ewoc nodes:
     (setq gotest-ui--status (gotest-ui--make-status ewoc cmdline dir))
-    ))
+    (gotest-ui-add-section gotest-ui--ewoc 'fail "Failed Tests:")
+    (gotest-ui-add-section gotest-ui--ewoc 'run "Currently Running:")
+    (gotest-ui-add-section gotest-ui--ewoc 'pass "Passed Tests:")
+    (gotest-ui-add-section gotest-ui--ewoc 'skip "Skipped:"))
+  ;; Set up the other buffers:
+  (setq gotest-ui--stderr-process-buffer (generate-new-buffer (format " *%s (stderr)" name)))
+  (with-current-buffer gotest-ui--stderr-process-buffer
+    (setq gotest-ui--ui-buffer buffer))
+  (setq gotest-ui--process-buffer (generate-new-buffer (format " *%s" name)))
+  (with-current-buffer gotest-ui--process-buffer
+    (setq gotest-ui--ui-buffer buffer)))
+
+(defun gotest-ui-add-section (ewoc state name)
+  (let ((section (gotest-ui-section-create :title name :tests (list nil))))
+    (setf (gotest-ui-section-node section)
+          (ewoc-enter-last ewoc section))
+    (push (cons state section) gotest-ui--section-alist)))
+
+(defun gotest-ui-sort-test-into-section (test previous-state)
+  (let (invalidate-nodes)
+    (when-let ((previous-section* (and previous-state
+                                       (assoc previous-state gotest-ui--section-alist))))
+      (let ((previous-section (cdr previous-section*)))
+        (setf (gotest-ui-section-tests previous-section)
+              (delete test (gotest-ui-section-tests previous-section)))
+        (when (null (cdr (gotest-ui-section-tests previous-section)))
+          (push (gotest-ui-section-node previous-section) invalidate-nodes))))
+    ;; Drop the node from the buffer:
+    (when-let (node (gotest-ui-thing-node test))
+      (let ((buffer-read-only nil))
+        (ewoc-delete gotest-ui--ewoc node))
+      (setf (gotest-ui-thing-node test) nil))
+
+    ;; Put it in the next secion:
+    (when-let ((section* (assoc (gotest-ui-thing-status test)
+                                gotest-ui--section-alist)))
+      (let* ((section (cdr section*))
+             (insertion-cons (gotest-ui-section-tests section)))
+        (while (and (cdr insertion-cons)
+                    (gotest-ui-test->= test (cadr insertion-cons)))
+          (setq insertion-cons (cdr insertion-cons)))
+        (rplacd insertion-cons (cons test (cdr insertion-cons)))
+        (let ((insertion-node (if (car insertion-cons)
+                                  (gotest-ui-thing-node (car insertion-cons))
+                                (gotest-ui-section-node section))))
+         (setf (gotest-ui-thing-node test)
+               (ewoc-enter-after gotest-ui--ewoc insertion-node test)))
+        (when (null (cddr (gotest-ui-section-tests section)))
+          (push (gotest-ui-section-node section) invalidate-nodes))))
+    (unless (null invalidate-nodes)
+      (apply 'ewoc-invalidate gotest-ui--ewoc invalidate-nodes))
+    (gotest-ui-thing-node test)))
 
 ;;;; Commands:
 
@@ -270,8 +327,6 @@ Whenever a test enters this state, it is automatically expanded."
   (interactive)
   (let* ((node (ewoc-locate gotest-ui--ewoc (point)))
          (data (ewoc-data node)))
-    ;; (unless (or (null data) (not (gotest-ui-thing-p data)))
-    ;;   (message "Not expandable."))
     (when (and data (gotest-ui-thing-p data))
       (setf (gotest-ui-thing-expanded-p data)
             (not (gotest-ui-thing-expanded-p data)))
@@ -284,6 +339,7 @@ Whenever a test enters this state, it is automatically expanded."
 ;;;; Displaying the data:
 
 (defvar-local gotest-ui--tests nil)
+(defvar-local gotest-ui--section-alist nil)
 (defvar-local gotest-ui--ewoc nil)
 (defvar-local gotest-ui--status nil)
 (defvar-local gotest-ui--process-buffer nil)
@@ -304,13 +360,7 @@ Whenever a test enters this state, it is automatically expanded."
       (let ((default-directory dir))
         (gotest-ui--clear-buffer buffer)
         (gotest-ui-mode)
-        (gotest-ui--setup-buffer buffer cmdline dir))
-      (setq gotest-ui--stderr-process-buffer (generate-new-buffer (format " *%s (stderr)" name)))
-      (with-current-buffer gotest-ui--stderr-process-buffer
-        (setq gotest-ui--ui-buffer buffer))
-      (setq gotest-ui--process-buffer (generate-new-buffer (format " *%s" name)))
-      (with-current-buffer gotest-ui--process-buffer
-        (setq gotest-ui--ui-buffer buffer))
+        (gotest-ui--setup-buffer buffer name cmdline dir))
       (setq gotest-ui--stderr-process
             (make-pipe-process :name (s-concat name "(stderr)")
                                :buffer gotest-ui--stderr-process-buffer
@@ -320,7 +370,7 @@ Whenever a test enters this state, it is automatically expanded."
             (make-process :name name
                           :buffer gotest-ui--process-buffer
                           :sentinel #'gotest-ui--process-sentinel
-                          :filter #'gotest-ui-read-json
+                          :filter #'gotest-ui-read-stdout
                           :stderr gotest-ui--stderr-process
                           :command cmdline)))))
 
@@ -340,6 +390,9 @@ Whenever a test enters this state, it is automatically expanded."
 
 (defun gotest-ui--pp-test (test)
   (cond
+   ((gotest-ui-section-p test)
+    (unless (null (cdr (gotest-ui-section-tests test)))
+      (insert "\n" (gotest-ui-section-title test) "\n")))
    ((gotest-ui-status-p test)
     (insert (gotest-ui-pp-status (gotest-ui-status-state test)))
     (insert (format " %s in %s\n\n"
@@ -396,14 +449,17 @@ Whenever a test enters this state, it is automatically expanded."
           ;; TODO: parse packages and make them failing tests
           (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))
 
-(defun gotest-ui-read-json (proc input)
+(defun gotest-ui-read-stdout (proc input)
   (let* ((process-buffer (process-buffer proc))
          (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
          (inhibit-quit t))
     (with-local-quit
       (when (buffer-live-p process-buffer)
-        (with-current-buffer process-buffer
-          (gotest-ui-read-json-1 proc process-buffer ui-buffer input))))))
+        (gotest-ui-read-json process-buffer (process-mark proc) input)))))
+
+(defun gotest-ui-read-json (process-buffer marker input)
+  (with-current-buffer process-buffer
+    (gotest-ui-read-json-1 process-buffer marker gotest-ui--ui-buffer input)))
 
 (defvar-local gotest-ui--current-failing-test nil)
 
@@ -412,7 +468,9 @@ Whenever a test enters this state, it is automatically expanded."
     (let* ((package (match-string 1))
            test)
       (with-current-buffer ui-buffer
-        (setq test (gotest-ui-ensure-test gotest-ui--ewoc package nil :status 'fail)))
+        (setq test (gotest-ui-ensure-test gotest-ui--ewoc package nil :status 'fail))
+        (gotest-ui-maybe-expand test)
+        (gotest-ui-sort-test-into-section test nil))
       (forward-line 1)
       test)))
 
@@ -442,10 +500,9 @@ Whenever a test enters this state, it is automatically expanded."
             (setq gotest-ui--current-failing-test test)
             (set-marker (process-mark proc) (point))
             (with-current-buffer ui-buffer
-              (gotest-ui-maybe-expand test)
               (ewoc-invalidate gotest-ui--ewoc (gotest-ui-thing-node test))))))))))
 
-(defun gotest-ui-read-json-1 (proc process-buffer ui-buffer input)
+(defun gotest-ui-read-json-1 (process-buffer marker ui-buffer input)
   (with-current-buffer process-buffer
     (save-excursion
       ;; insert the chunk of output at the end
@@ -455,16 +512,17 @@ Whenever a test enters this state, it is automatically expanded."
       ;; try to read the next object (which is hopefully complete now):
       (let ((nodes
              (cl-loop
-              for (node . continue) = (gotest-ui-read-test-event proc ui-buffer)
+              for (node . continue) = (gotest-ui-read-test-event process-buffer marker ui-buffer)
               when node collect node into nodes
               while continue
               finally (return nodes))))
         (when nodes
           (with-current-buffer ui-buffer
-            (apply #'ewoc-invalidate gotest-ui--ewoc (cl-remove-duplicates nodes))))))))
+            (apply #'ewoc-invalidate gotest-ui--ewoc
+                   (cl-remove-if-not (lambda (node) (marker-buffer (ewoc-location node))) (cl-remove-duplicates nodes)))))))))
 
-(defun gotest-ui-read-test-event (proc ui-buffer)
-  (goto-char (process-mark proc))
+(defun gotest-ui-read-test-event (process-buffer marker ui-buffer)
+  (goto-char marker)
   (when (= (point) (line-end-position))
     (forward-line 1))
   (case (char-after (point))
@@ -472,7 +530,7 @@ Whenever a test enters this state, it is automatically expanded."
      ;; It's JSON:
      (condition-case err
          (let ((obj (json-read)))
-           (set-marker (process-mark proc) (point))
+           (set-marker marker (point))
            (with-current-buffer ui-buffer
              (cons (gotest-ui-update-test-status obj) t)))
        (json-error (cons nil nil))
@@ -492,29 +550,14 @@ Whenever a test enters this state, it is automatically expanded."
            (setq test (gotest-ui-ensure-test gotest-ui--ewoc package-name nil :status 'fail)
                  node (gotest-ui-thing-node test))
            (setf (gotest-ui-test-reason test) reason)
+           (gotest-ui-sort-test-into-section test nil)
            (gotest-ui-maybe-expand test))
          (forward-line 1)
-         (set-marker (process-mark proc) (point))
+         (set-marker marker (point))
          (cons node nil))))
     (otherwise
      ;; We're done:
      (cons nil nil))))
-
-(defun gotest-ui-read-test-compiler-error (test proc)
-  "Read output line-by-line until we see JSON again, or we reach point-max."
-  (forward-line 0)
-  (cl-loop for bol = (point)
-           for line = (save-excursion
-                        (forward-line 1)
-                        (buffer-substring bol (point)))
-           do (forward-line 1)
-           do (set-process-mark proc (point))
-           do (gotest-ui-update-thing-output test (concat line "\n"))
-           when (eql (char-after (point)) ?\{)
-           do (progn (setq gotest-ui-test-with-compiler-error nil)
-                     (return))
-           when (eql (point-max) (point))
-           do (return)))
 
 (defun gotest-ui-maybe-expand (test)
   (when (memq (gotest-ui-test-status test) gotest-ui-expand-test-statuses)
@@ -522,22 +565,27 @@ Whenever a test enters this state, it is automatically expanded."
 
 (defun gotest-ui-update-test-status (json)
   (let-alist json
-    (let ((action (intern .Action))
-          (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test)))
+    (let* ((action (intern .Action))
+           (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
+           (previous-status (gotest-ui-thing-status test)))
       (case action
-        (run t)
+        (run
+         (gotest-ui-sort-test-into-section test nil))
         (output (gotest-ui-update-thing-output test .Output))
         (pass
          (setf (gotest-ui-thing-status test) 'pass
                (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-sort-test-into-section test previous-status)
          (gotest-ui-maybe-expand test))
         (fail
          (setf (gotest-ui-thing-status test) 'fail
                (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-sort-test-into-section test previous-status)
          (gotest-ui-maybe-expand test))
         (skip
          (setf (gotest-ui-thing-status test) 'skip
                (gotest-ui-thing-elapsed test) .Elapsed)
+         (gotest-ui-sort-test-into-section test previous-status)
          (gotest-ui-maybe-expand test))
         (otherwise
          (setq test nil)))
