@@ -535,22 +535,6 @@ Whenever a test enters this state, it is automatically expanded."
      ;; We're done:
      (cons nil nil))))
 
-(defun gotest-ui-read-test-compiler-error (test proc)
-  "Read output line-by-line until we see JSON again, or we reach point-max."
-  (forward-line 0)
-  (cl-loop for bol = (point)
-           for line = (save-excursion
-                        (forward-line 1)
-                        (buffer-substring bol (point)))
-           do (forward-line 1)
-           do (set-process-mark proc (point))
-           do (gotest-ui-update-thing-output test (concat line "\n"))
-           when (eql (char-after (point)) ?\{)
-           do (progn (setq gotest-ui-test-with-compiler-error nil)
-                     (return))
-           when (eql (point-max) (point))
-           do (return)))
-
 (defun gotest-ui-maybe-expand (test)
   (when (memq (gotest-ui-test-status test) gotest-ui-expand-test-statuses)
     (setf (gotest-ui-test-expanded-p test) t)))
