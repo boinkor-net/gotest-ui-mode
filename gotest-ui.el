@@ -554,7 +554,7 @@ Whenever a test enters this state, it is automatically expanded."
            (gotest-ui-maybe-expand test))
          (forward-line 1)
          (set-marker marker (point))
-         (cons node nil))))
+         (cons node t))))
     (otherwise
      ;; We're done:
      (cons nil nil))))
