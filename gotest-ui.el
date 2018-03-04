@@ -97,16 +97,22 @@ Whenever a test enters this state, it is automatically expanded."
   (elapsed)   ; a floating-point amount of seconds
   )
 
-;;; `gotest-ui-package' is a single test. It contains a status and
+;;; `gotest-ui-test' is a single test. It contains a status and
 ;;; output.
-(defstruct (gotest-ui-test (:print-function gotest-ui-print-test)
-                           (:include gotest-ui-thing)
+(defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
   (package)
   (reason))
 
-(defun gotest-ui-print-test (test stream depth)
-  (princ (gotest-ui-test-package test)))
+(defun gotest-ui-test->= (test1 test2)
+  "Returns true if TEST1's name sorts greater than TEST2's."
+  (let ((pkg1 (gotest-ui-test-package test1))
+        (pkg2 (gotest-ui-test-package test2))
+        (name1 (or (gotest-ui-thing-name test1) ""))
+        (name2 (or (gotest-ui-thing-name test2) "")))
+    (if (string= pkg1 pkg2)
+        (string> name1 name2)
+      (string> pkg1 pkg2))))
 
 (defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
   (state)
