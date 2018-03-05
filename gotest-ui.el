@@ -269,8 +269,8 @@ Whenever a test enters this state, it is automatically expanded."
     (setq gotest-ui--status (gotest-ui--make-status ewoc cmdline dir))
     (gotest-ui-add-section gotest-ui--ewoc 'fail "Failed Tests:")
     (gotest-ui-add-section gotest-ui--ewoc 'run "Currently Running:")
-    (gotest-ui-add-section gotest-ui--ewoc 'pass "Passed Tests:")
-    (gotest-ui-add-section gotest-ui--ewoc 'skip "Skipped:"))
+    (gotest-ui-add-section gotest-ui--ewoc 'skip "Skipped:")
+    (gotest-ui-add-section gotest-ui--ewoc 'pass "Passed Tests:"))
   ;; Set up the other buffers:
   (setq gotest-ui--stderr-process-buffer (generate-new-buffer (format " *%s (stderr)" name)))
   (with-current-buffer gotest-ui--stderr-process-buffer
