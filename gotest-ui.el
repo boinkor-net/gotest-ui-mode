@@ -446,7 +446,6 @@ Whenever a test enters this state, it is automatically expanded."
     (with-local-quit
       (when (buffer-live-p process-buffer)
         (with-current-buffer process-buffer
-          ;; TODO: parse packages and make them failing tests
           (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))
 
 (defun gotest-ui-read-stdout (proc input)
@@ -493,7 +492,7 @@ Whenever a test enters this state, it is automatically expanded."
               (forward-line 1)
               (set-marker (process-mark proc) (point))
               (with-current-buffer ui-buffer
-                (gotest-ui-update-thing-output test line)
+                (gotest-ui-update-thing-output test (concat line "\n"))
                 (ewoc-invalidate gotest-ui--ewoc (gotest-ui-thing-node test)))))))
          (t
           (let ((test (gotest-ui-read-failing-package ui-buffer)))
