@@ -355,7 +355,7 @@ Whenever a test enters this state, it is automatically expanded."
          (name (format "*go test: %s in %s" (s-join " " cmdline) dir))
          (buffer (get-buffer-create name)))
     (unless (eql buffer (current-buffer))
-      (switch-to-buffer-other-window buffer))
+      (display-buffer buffer))
     (with-current-buffer buffer
       (let ((default-directory dir))
         (gotest-ui--clear-buffer buffer)
