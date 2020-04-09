@@ -232,7 +232,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;;; Mode definition
 
-(setq gotest-ui-mode-map
+(defvar gotest-ui-mode-map
   (let ((m (make-sparse-keymap)))
     (suppress-keymap m)
     ;; key bindings go here
