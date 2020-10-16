@@ -1,44 +1,50 @@
 ;;; gotest-ui.el --- Major mode for running go test -json
-
-;; Copyright 2018 Andreas Fuchs
+;;
+;; Copyright (C) 2018-2020 Andreas Fuchs
+;;
 ;; Authors: Andreas Fuchs <asf@boinkor.net>
-
 ;; URL: https://github.com/antifuchs/gotest-ui-mode
 ;; Created: Feb 18, 2018
 ;; Keywords: languages go
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0"))
-
+;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0") (projectile "2.2.0"))
+;;
 ;; This file is not a part of GNU Emacs.
-
+;;
+;; License:
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 3.0, or
 ;; (at your option) any later version.
-
+;;
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
+;;
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program; if not, write to the Free Software
 ;; Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
+;;
 ;;; Commentary:
-
-;;  Provides support for running go tests with a nice user interface
-;;  that allows folding away output, highlighting failing tests.
-
+;;
+;; This package support for running go tests with a nice user interface
+;; that allows folding away output, highlighting failing tests.
+;;
 ;;; Code:
 
 (eval-when-compile
-  (require 'cl))
+  (require 'cl-macs))
 
+(require 'cl-seq)
 (require 'subr-x)
 (require 'ewoc)
 (require 'json)
 (require 'compile)
+
+(require 'projectile)
+(require 'gotest)
+(require 's)
 
 (defgroup gotest-ui nil
   "The go test runner."
@@ -79,7 +85,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;;; Data model:
 
-(defstruct (gotest-ui-section :named
+(cl-defstruct (gotest-ui-section :named
                               (:constructor gotest-ui-section-create)
                               (:type vector)
                               (:predicate gotest-ui-section-p))
@@ -88,7 +94,7 @@ Whenever a test enters this state, it is automatically expanded."
 ;;; `gotest-ui-thing' is a thing that can be under test: a
 ;;; package, or a single test.
 
-(defstruct gotest-ui-thing
+(cl-defstruct gotest-ui-thing
   (name)
   (node)
   (expanded-p)
@@ -99,7 +105,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;; `gotest-ui-test' is a single test. It contains a status and
 ;;; output.
-(defstruct (gotest-ui-test (:include gotest-ui-thing)
+(cl-defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
   (package)
   (reason))
@@ -114,7 +120,7 @@ Whenever a test enters this state, it is automatically expanded."
         (string> name1 name2)
       (string> pkg1 pkg2))))
 
-(defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
+(cl-defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
   (state)
   (cmdline)
   (dir)
@@ -383,7 +389,7 @@ Whenever a test enters this state, it is automatically expanded."
 (defun gotest-ui-pp-status (status)
   (propertize (format "%s" status)
               'face
-              (case status
+              (cl-case status
                 (fail 'gotest-ui-fail-face)
                 (skip 'gotest-ui-skip-face)
                 (pass 'gotest-ui-pass-face)
@@ -530,7 +536,7 @@ Whenever a test enters this state, it is automatically expanded."
   (goto-char marker)
   (when (= (point) (line-end-position))
     (forward-line 1))
-  (case (char-after (point))
+  (cl-case (char-after (point))
     (?\{
      ;; It's JSON:
      (condition-case err
@@ -573,7 +579,7 @@ Whenever a test enters this state, it is automatically expanded."
     (let* ((action (intern .Action))
            (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
            (previous-status (gotest-ui-thing-status test)))
-      (case action
+      (cl-case action
         (run
          (gotest-ui-sort-test-into-section test nil))
         (output (gotest-ui-update-thing-output test .Output))
