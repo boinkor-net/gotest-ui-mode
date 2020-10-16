@@ -111,7 +111,7 @@ Whenever a test enters this state, it is automatically expanded."
   (reason))
 
 (defun gotest-ui-test->= (test1 test2)
-  "Returns true if TEST1's name sorts greater than TEST2's."
+  "Return non-nil if TEST1's name sort greater than TEST2's."
   (let ((pkg1 (gotest-ui-test-package test1))
         (pkg2 (gotest-ui-test-package test2))
         (name1 (or (gotest-ui-thing-name test1) ""))
@@ -128,17 +128,27 @@ Whenever a test enters this state, it is automatically expanded."
   (node))
 
 (cl-defun gotest-ui--make-status (ewoc cmdline dir)
+  "Construct a test result status for EWOC, running CMDLINE in DIR."
   (let ((status (gotest-ui--make-status-1 :state 'run :cmdline (s-join " " cmdline) :dir dir)))
     (let ((node (ewoc-enter-first ewoc status)))
       (setf (gotest-ui-status-node status) node))
     status))
 
 (cl-defun gotest-ui--make-test (ewoc &rest args &key status package name &allow-other-keys)
+  "Construct a test result object.
+EWOC is the ewoc instance for that results buffer, ARGS holds the remaining
+arguments; STATUS is the test result state, PACKAGE is the go pkg
+holding the test,and NAME is the name of the test."
   (apply #'gotest-ui--make-test-1 :status (or status "run") args))
 
 ;;; Data manipulation routines:
 
 (cl-defun gotest-ui-ensure-test (ewoc package-name base-name &key (status 'run))
+  "Ensure a test result collector exists.
+
+EWOC is the ewoc instance for the test results buffer; PACKAGE-NAME is
+the go pkg name, BASE-NAME is the filename inside that go package, and
+STATUS is the status of the test (usually 'run)."
   (let* ((test-name (format "%s.%s" package-name base-name))
          (test (gethash test-name gotest-ui--tests)))
     (if test
@@ -147,14 +157,12 @@ Whenever a test enters this state, it is automatically expanded."
             (gotest-ui--make-test ewoc :name base-name :package package-name :status status)))))
 
 (defun gotest-ui-update-status (new-state)
+  "Update overall result status to NEW-STATE."
   (setf (gotest-ui-status-state gotest-ui--status) new-state)
   (ewoc-invalidate gotest-ui--ewoc (gotest-ui-status-node gotest-ui--status)))
 
-(defun gotest-ui-update-status-output (new-output)
-  (setf (gotest-ui-status-output gotest-ui--status) new-output)
-  (ewoc-invalidate gotest-ui--ewoc (gotest-ui-status-node gotest-ui--status)))
-
 (defun gotest-ui-ensure-output-buffer (thing)
+  "Ensure a buffer for test result output of THING exists."
   (unless (gotest-ui-thing-buffer thing)
     (with-current-buffer
         (setf (gotest-ui-thing-buffer thing)
@@ -165,7 +173,7 @@ Whenever a test enters this state, it is automatically expanded."
   (gotest-ui-thing-buffer thing))
 
 (defun gotest-ui-mouse-open-file (event)
-  "In gotest-ui mode, open the file/line reference in another window."
+  "Open the file/line reference from EVENT in another window."
   (interactive "e")
   (let ((window (posn-window (event-end event)))
         (pos (posn-point (event-end event)))
@@ -177,6 +185,7 @@ Whenever a test enters this state, it is automatically expanded."
       (gotest-ui-open-file-at-point))))
 
 (defun gotest-ui-open-file-at-point ()
+  "Open the file/line at the current point."
   (interactive)
   (let ((file (gotest-ui-get-file-for-visit))
         (line (gotest-ui-get-line-for-visit)))
@@ -188,12 +197,15 @@ Whenever a test enters this state, it is automatically expanded."
         (forward-line (1- line))))))
 
 (defun gotest-ui-get-file-for-visit ()
+  "Return the file name from a go file reference."
   (get-text-property (point) 'gotest-ui-file))
 
 (defun gotest-ui-get-line-for-visit ()
+  "Return the line number from a go file reference."
   (string-to-number (get-text-property (point) 'gotest-ui-line)))
 
 (defun gotest-ui-file-from-gopath (package file-basename)
+  "Return an expanded file name for reaching FILE-BASENAME in go pkg PACKAGE."
   (if (or (file-name-absolute-p file-basename)
           (string-match-p "/" file-basename))
       file-basename
@@ -207,6 +219,7 @@ Whenever a test enters this state, it is automatically expanded."
     map))
 
 (defun gotest-ui-ensure-parsed (thing)
+  "Parse the output in THING and ensure that .go file references are link-ified."
   (save-excursion
     (goto-char gotest-ui-parse-marker)
     (while (re-search-forward "\\([^ \t]+\\.go\\):\\([0-9]+\\)" gotest-ui-insertion-marker t)
@@ -222,6 +235,7 @@ Whenever a test enters this state, it is automatically expanded."
     (set-marker gotest-ui-parse-marker gotest-ui-insertion-marker)))
 
 (defun gotest-ui-update-thing-output (thing output)
+  "Update the THING (a test result), with OUTPUT."
   (with-current-buffer (gotest-ui-ensure-output-buffer thing)
     (goto-char gotest-ui-insertion-marker)
     (let ((overwrites (split-string output "\r")))
@@ -259,6 +273,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 
 (defun gotest-ui--clear-buffer (buffer)
+  "Clear the gotest-ui results state from BUFFER."
   (let ((dir default-directory))
     (with-current-buffer buffer
       (when (buffer-live-p gotest-ui--process-buffer)
@@ -270,6 +285,11 @@ Whenever a test enters this state, it is automatically expanded."
       (setq-local default-directory dir))))
 
 (defun gotest-ui--setup-buffer (buffer name cmdline dir)
+  "Setup BUFFER as a gotest-ui results buffer.
+
+NAME is the buffer name, CMDLINE is the command line to invoke
+`go test` with, and DIR is the current-directory in which to run
+the command line."
   (setq-local default-directory dir)
   (setq gotest-ui--cmdline cmdline
         gotest-ui--dir dir)
@@ -292,12 +312,17 @@ Whenever a test enters this state, it is automatically expanded."
     (setq gotest-ui--ui-buffer buffer)))
 
 (defun gotest-ui-add-section (ewoc state name)
+  "Add a section for STATE with NAME to EWOC."
   (let ((section (gotest-ui-section-create :title name :tests (list nil))))
     (setf (gotest-ui-section-node section)
           (ewoc-enter-last ewoc section))
     (push (cons state section) gotest-ui--section-alist)))
 
 (defun gotest-ui-sort-test-into-section (test previous-state)
+  "Sort result TEST into the appropriate section, according to its state.
+
+If PREVIOUS-STATE is non-nil, remove the result from the section
+that it indicates."
   (let (invalidate-nodes)
     (when-let ((previous-section* (and previous-state
                                        (assoc previous-state gotest-ui--section-alist))))
@@ -335,7 +360,7 @@ Whenever a test enters this state, it is automatically expanded."
 ;;;; Commands:
 
 (defun gotest-ui-toggle-expanded ()
-  "Toggle expandedness of a test/package node"
+  "Toggle expandedness of a test/package node."
   (interactive)
   (let* ((node (ewoc-locate gotest-ui--ewoc (point)))
          (data (ewoc-data node)))
@@ -345,6 +370,7 @@ Whenever a test enters this state, it is automatically expanded."
       (ewoc-invalidate gotest-ui--ewoc node))))
 
 (defun gotest-ui-rerun ()
+  "Re-run the `go test` run being displayed in the current buffer."
   (interactive)
   (gotest-ui gotest-ui--cmdline :dir gotest-ui--dir))
 
@@ -363,6 +389,12 @@ Whenever a test enters this state, it is automatically expanded."
 (defvar-local gotest-ui--dir nil)
 
 (cl-defun gotest-ui (cmdline &key dir)
+  "Invoke `go test` with CMDLINE in DIR.
+
+This is the generalized entrypoint for gotest-ui, for
+programmatic use.  The interactive functions
+`gotest-ui-current-file', `gotest-ui-current-test',
+`gotest-ui-current-project' should be used interactively."
   (let* ((dir (or dir default-directory))
          (name (format "*go test: %s in %s" (s-join " " cmdline) dir))
          (buffer (get-buffer-create name)))
@@ -387,6 +419,7 @@ Whenever a test enters this state, it is automatically expanded."
                           :command cmdline)))))
 
 (defun gotest-ui-pp-status (status)
+  "Pretty-print STATUS with the appropriate face."
   (propertize (format "%s" status)
               'face
               (cl-case status
@@ -396,11 +429,13 @@ Whenever a test enters this state, it is automatically expanded."
                 (otherwise 'default))))
 
 (defun gotest-ui--pp-test-output (test)
+  "Return the output for TEST as a propertized string."
   (with-current-buffer (gotest-ui-ensure-output-buffer test)
     (propertize (buffer-substring (point-min) (point-max))
                 'line-prefix "\t")))
 
 (defun gotest-ui--pp-test (test)
+  "Pretty-print TEST into the current buffer."
   (cond
    ((gotest-ui-section-p test)
     (unless (null (cdr (gotest-ui-section-tests test)))
@@ -434,6 +469,10 @@ Whenever a test enters this state, it is automatically expanded."
 ;;;; Handling input:
 
 (defun gotest-ui--process-sentinel (proc event)
+  "Process sentinel for gotest-ui in PROC.
+
+Processes EVENT, updating the overall test status (depending on
+the exit code of the process)."
   (let* ((process-buffer (process-buffer proc))
          (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
          (inhibit-quit t))
@@ -448,10 +487,12 @@ Whenever a test enters this state, it is automatically expanded."
           (gotest-ui-update-status event)))))))
 
 (defun gotest-ui--stderr-process-sentinel (proc event)
+  "Acts as the process sentinel for stderr on PROC, ignoring EVENT."
   ;; ignore all events
   nil)
 
 (defun gotest-ui-read-stderr (proc input)
+  "Filters stderr output from the go compiler on PROC, reading INPUT."
   (let* ((process-buffer (process-buffer proc))
          (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
          (inhibit-quit t))
@@ -461,6 +502,7 @@ Whenever a test enters this state, it is automatically expanded."
           (gotest-ui-read-compiler-spew proc process-buffer ui-buffer input))))))
 
 (defun gotest-ui-read-stdout (proc input)
+  "Read the stdout of PROC, processing INPUT as json."
   (let* ((process-buffer (process-buffer proc))
          (ui-buffer (with-current-buffer process-buffer gotest-ui--ui-buffer))
          (inhibit-quit t))
@@ -469,12 +511,14 @@ Whenever a test enters this state, it is automatically expanded."
         (gotest-ui-read-json process-buffer (process-mark proc) input)))))
 
 (defun gotest-ui-read-json (process-buffer marker input)
+  "Read partial json expression INPUT from PROCESS-BUFFER, updating MARKER."
   (with-current-buffer process-buffer
     (gotest-ui-read-json-1 process-buffer marker gotest-ui--ui-buffer input)))
 
 (defvar-local gotest-ui--current-failing-test nil)
 
 (defun gotest-ui-read-failing-package (ui-buffer)
+  "Read a failing package's state and update it in UI-BUFFER."
   (when (looking-at "^# \\(.*\\)$")
     (let* ((package (match-string 1))
            test)
@@ -486,6 +530,9 @@ Whenever a test enters this state, it is automatically expanded."
       test)))
 
 (defun gotest-ui-read-compiler-spew (proc process-buffer ui-buffer input)
+  "Read compiler spew INPUT from PROC in PROCESS-BUFFER.
+
+Update UI-BUFFER with the error messages."
   (with-current-buffer process-buffer
     (save-excursion
       (goto-char (point-max))
@@ -514,6 +561,10 @@ Whenever a test enters this state, it is automatically expanded."
               (ewoc-invalidate gotest-ui--ewoc (gotest-ui-thing-node test))))))))))
 
 (defun gotest-ui-read-json-1 (process-buffer marker ui-buffer input)
+  "Read a chunk of json (INPUT) into PROCESS-BUFFER.
+
+MARKER is the last end of a complete JSON object.  It is updated
+if a complete json expression was read.  Update UI-BUFFER if so."
   (with-current-buffer process-buffer
     (save-excursion
       ;; insert the chunk of output at the end
@@ -533,6 +584,10 @@ Whenever a test enters this state, it is automatically expanded."
                    (cl-remove-if-not (lambda (node) (marker-buffer (ewoc-location node))) (cl-remove-duplicates nodes)))))))))
 
 (defun gotest-ui-read-test-event (process-buffer marker ui-buffer)
+  "Read a test event from PROCESS-BUFFER for UI-BUFFER.
+
+MARKER is only moved and UI-BUFFER is only updated if a complete
+expression was read."
   (goto-char marker)
   (when (= (point) (line-end-position))
     (forward-line 1))
@@ -571,10 +626,12 @@ Whenever a test enters this state, it is automatically expanded."
      (cons nil nil))))
 
 (defun gotest-ui-maybe-expand (test)
+  "Display TEST as expanded if its state is in `gotest-ui-expand-test-statuses'."
   (when (memq (gotest-ui-test-status test) gotest-ui-expand-test-statuses)
     (setf (gotest-ui-test-expanded-p test) t)))
 
 (defun gotest-ui-update-test-status (json)
+  "Update a test status from JSON."
   (let-alist json
     (let* ((action (intern .Action))
            (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
@@ -605,6 +662,7 @@ Whenever a test enters this state, it is automatically expanded."
 ;;;; Commands for go-mode:
 
 (defun gotest-ui--command-line (&rest cmdline)
+  "Return an entire command line for invoking `go test` from CMDLINE."
   (append gotest-ui-test-binary gotest-ui-test-args gotest-ui-additional-test-args
           cmdline))
 
