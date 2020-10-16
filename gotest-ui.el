@@ -1,35 +1,36 @@
 ;;; gotest-ui.el --- Major mode for running go test -json
-
-;; Copyright 2018 Andreas Fuchs
+;;
+;; Copyright (C) 2018-2020 Andreas Fuchs
+;;
 ;; Authors: Andreas Fuchs <asf@boinkor.net>
-
 ;; URL: https://github.com/antifuchs/gotest-ui-mode
 ;; Created: Feb 18, 2018
 ;; Keywords: languages go
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0"))
-
+;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0") (projectile "2.2.0"))
+;;
 ;; This file is not a part of GNU Emacs.
-
+;;
+;; License:
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License as
 ;; published by the Free Software Foundation; either version 3.0, or
 ;; (at your option) any later version.
-
+;;
 ;; This program is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
 ;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ;; GNU General Public License for more details.
-
+;;
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program; if not, write to the Free Software
 ;; Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
-
+;;
 ;;; Commentary:
-
-;;  Provides support for running go tests with a nice user interface
-;;  that allows folding away output, highlighting failing tests.
-
+;;
+;; This package support for running go tests with a nice user interface
+;; that allows folding away output, highlighting failing tests.
+;;
 ;;; Code:
 
 (eval-when-compile
