@@ -85,7 +85,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;;; Data model:
 
-(defstruct (gotest-ui-section :named
+(cl-defstruct (gotest-ui-section :named
                               (:constructor gotest-ui-section-create)
                               (:type vector)
                               (:predicate gotest-ui-section-p))
@@ -94,7 +94,7 @@ Whenever a test enters this state, it is automatically expanded."
 ;;; `gotest-ui-thing' is a thing that can be under test: a
 ;;; package, or a single test.
 
-(defstruct gotest-ui-thing
+(cl-defstruct gotest-ui-thing
   (name)
   (node)
   (expanded-p)
@@ -105,7 +105,7 @@ Whenever a test enters this state, it is automatically expanded."
 
 ;;; `gotest-ui-test' is a single test. It contains a status and
 ;;; output.
-(defstruct (gotest-ui-test (:include gotest-ui-thing)
+(cl-defstruct (gotest-ui-test (:include gotest-ui-thing)
                            (:constructor gotest-ui--make-test-1))
   (package)
   (reason))
@@ -120,7 +120,7 @@ Whenever a test enters this state, it is automatically expanded."
         (string> name1 name2)
       (string> pkg1 pkg2))))
 
-(defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
+(cl-defstruct (gotest-ui-status (:constructor gotest-ui--make-status-1))
   (state)
   (cmdline)
   (dir)
