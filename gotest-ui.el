@@ -6,7 +6,7 @@
 ;; URL: https://github.com/antifuchs/gotest-ui-mode
 ;; Created: Feb 18, 2018
 ;; Keywords: languages go
-;; Version: 0.1.0
+;; Version: 0.2.0
 ;; Package-Requires: ((emacs "25") (s "1.12.0") (gotest "0.14.0") (projectile "2.2.0"))
 ;;
 ;; This file is not a part of GNU Emacs.
