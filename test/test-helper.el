@@ -1,6 +1,6 @@
 ;;; test-helper.el --- Helpers for gotest-ui-test.el
 
-(load-file "./gotest-ui.el")
+(load-file "../gotest-ui.el")
 (require 's)
 (require 'cl)
 
