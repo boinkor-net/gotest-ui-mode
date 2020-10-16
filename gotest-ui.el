@@ -389,7 +389,7 @@ Whenever a test enters this state, it is automatically expanded."
 (defun gotest-ui-pp-status (status)
   (propertize (format "%s" status)
               'face
-              (case status
+              (cl-case status
                 (fail 'gotest-ui-fail-face)
                 (skip 'gotest-ui-skip-face)
                 (pass 'gotest-ui-pass-face)
@@ -536,7 +536,7 @@ Whenever a test enters this state, it is automatically expanded."
   (goto-char marker)
   (when (= (point) (line-end-position))
     (forward-line 1))
-  (case (char-after (point))
+  (cl-case (char-after (point))
     (?\{
      ;; It's JSON:
      (condition-case err
@@ -579,7 +579,7 @@ Whenever a test enters this state, it is automatically expanded."
     (let* ((action (intern .Action))
            (test (gotest-ui-ensure-test gotest-ui--ewoc .Package .Test))
            (previous-status (gotest-ui-thing-status test)))
-      (case action
+      (cl-case action
         (run
          (gotest-ui-sort-test-into-section test nil))
         (output (gotest-ui-update-thing-output test .Output))
