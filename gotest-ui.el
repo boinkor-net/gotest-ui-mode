@@ -34,12 +34,17 @@
 ;;; Code:
 
 (eval-when-compile
-  (require 'cl))
+  (require 'cl-macs))
 
+(require 'cl-seq)
 (require 'subr-x)
 (require 'ewoc)
 (require 'json)
 (require 'compile)
+
+(require 'projectile)
+(require 'gotest)
+(require 's)
 
 (defgroup gotest-ui nil
   "The go test runner."
