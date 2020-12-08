@@ -69,19 +69,23 @@
 (defcustom gotest-ui-expand-test-statuses '(fail)
   "Statuses to expand test cases for.
 Whenever a test enters this state, it is automatically expanded."
-  :group 'gotest-ui)
+  :group 'gotest-ui
+  :type '(repeat symbol))
 
 (defcustom gotest-ui-test-binary '("go")
   "Command list used to invoke the `go' binary."
-  :group 'gotest-ui)
+  :group 'gotest-ui
+  :type '(repeat string))
 
 (defcustom gotest-ui-test-args '("test" "-json")
   "Argument list used to run tests with JSON output."
-  :group 'gotest-ui)
+  :group 'gotest-ui
+  :type '(repeat string))
 
 (defcustom gotest-ui-additional-test-args '()
   "Additional args to pass to `go test'."
-  :group 'gotest-ui)
+  :group 'gotest-ui
+  :type '(repeat string))
 
 ;;;; Data model:
 
