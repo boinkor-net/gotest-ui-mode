@@ -87,6 +87,20 @@ Whenever a test enters this state, it is automatically expanded."
   :group 'gotest-ui
   :type '(repeat string))
 
+(defvar-local gotest-ui--tests nil)
+(defvar-local gotest-ui--section-alist nil)
+(defvar-local gotest-ui--ewoc nil)
+(defvar-local gotest-ui--status nil)
+(defvar-local gotest-ui--process-buffer nil)
+(defvar-local gotest-ui--stderr-process-buffer nil)
+(defvar-local gotest-ui--ui-buffer nil)
+(defvar-local gotest-ui--process nil)
+(defvar-local gotest-ui--stderr-process nil)
+(defvar-local gotest-ui--cmdline nil)
+(defvar-local gotest-ui--dir nil)
+(defvar gotest-ui-parse-marker)
+(defvar gotest-ui-insertion-marker)
+
 ;;;; Data model:
 
 (cl-defstruct (gotest-ui-section :named
@@ -379,18 +393,6 @@ that it indicates."
   (gotest-ui gotest-ui--cmdline :dir gotest-ui--dir))
 
 ;;;; Displaying the data:
-
-(defvar-local gotest-ui--tests nil)
-(defvar-local gotest-ui--section-alist nil)
-(defvar-local gotest-ui--ewoc nil)
-(defvar-local gotest-ui--status nil)
-(defvar-local gotest-ui--process-buffer nil)
-(defvar-local gotest-ui--stderr-process-buffer nil)
-(defvar-local gotest-ui--ui-buffer nil)
-(defvar-local gotest-ui--process nil)
-(defvar-local gotest-ui--stderr-process nil)
-(defvar-local gotest-ui--cmdline nil)
-(defvar-local gotest-ui--dir nil)
 
 (cl-defun gotest-ui (cmdline &key dir)
   "Invoke `go test` with CMDLINE in DIR.
